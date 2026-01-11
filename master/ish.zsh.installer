@@ -107,6 +107,23 @@ print_box() {
   printf '%b\n' "${CYAN}└─────────────────────────────────────────┘${RESET}"
 }
 
+start_blackout() {
+  BLACKOUT_STARTED=true
+  # Set pitch-black background and clear screen
+  printf '\033[40m\033[2J\033[H'
+  # Ensure terminal is reset if script exits unexpectedly
+  trap 'printf "\033[0m"; clear; exit 1' INT TERM EXIT
+}
+
+end_blackout() {
+  if [ "${BLACKOUT_STARTED}" = true ]; then
+    printf '\033[0m'
+    clear
+    BLACKOUT_STARTED=false
+    trap - INT TERM EXIT
+  fi
+}
+
 progress() {
   secs=${1:-1}
   printf '   [....................] (0%%)'
@@ -281,8 +298,9 @@ if [ "$SKIP_INSTALL" = false ]; then
 
     # Verify zsh is installed before handoff
     if ! command -v zsh >/dev/null 2>&1; then
-      echo "${RED}Error: Zsh not found. Cannot proceed.${RESET}"
-      exit 1
+      echo "${YELLOW}Warning: Zsh not found after attempted install. Proceeding to repo sync; zsh-dependent features will be skipped.${RESET}"
+      # Avoid blocking execution: set skip flag so we don't rely on zsh later
+      SKIP_ZSH_INSTALL=true
     fi
   else
     echo "${YELLOW}>> Skipping zsh/Oh-My-Zsh installation on Windows/WSL${RESET}"
