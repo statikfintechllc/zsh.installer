@@ -5,7 +5,7 @@ An automated installer script for setting up Zsh with Oh-My-Zsh on iSH (iOS Shel
 ## Quick Start
 
 ```shell
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/ish.zsh.installer)"
 ```
 
 ## Overview
