@@ -388,16 +388,53 @@ if [ "$SKIP_GIT_CONFIG" = false ]; then
   sleep 1
 fi
 
-# Determine builds directory: prefer PWD/builds, fallback to HOME/builds, else create PWD/builds
-if [ -d "$PWD/builds" ]; then
-  BUILD_DIR="$PWD/builds"
-elif [ -d "$HOME/builds" ]; then
-  BUILD_DIR="$HOME/builds"
+# Determine builds directory: prefer STATIK_BUILD_DIR, then PWD/builds, fallback to HOME/builds, else create PWD/builds
+if [ -n "${STATIK_BUILD_DIR:-}" ]; then
+  BUILD_DIR="$STATIK_BUILD_DIR"
+  echo "${CYAN}>> Using build directory from STATIK_BUILD_DIR: ${BUILD_DIR}${RESET}"
 else
-  BUILD_DIR="$PWD/builds"
-  mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory${RESET}"; exit 1; }
+  if [ -d "$PWD/builds" ]; then
+    BUILD_DIR="$PWD/builds"
+  elif [ -d "$HOME/builds" ]; then
+    BUILD_DIR="$HOME/builds"
+  else
+    BUILD_DIR="$PWD/builds"
+    mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory ${BUILD_DIR}${RESET}"; exit 1; }
+  fi
+  echo "${CYAN}>> Using build directory: ${BUILD_DIR}${RESET}"
+  # If interactive and BUILD_DIR is not inside current PWD, confirm with user
+  if [ -t 1 ]; then
+    case "$BUILD_DIR/" in
+      "$PWD/")
+        ;; # same tree, continue
+      "$PWD/"*)
+        ;; # same tree, continue
+      *)
+        printf '%b' "${YELLOW}>> Selected build directory %s is not under current directory %s. Continue? (y/n): ${RESET}" "$BUILD_DIR" "$PWD"
+        read -r CONF_BD < /dev/tty
+        if ! printf '%s' "$CONF_BD" | grep -qi '^y' >/dev/null 2>&1; then
+          echo "${YELLOW}Aborting; set STATIK_BUILD_DIR to the desired builds directory and rerun.${RESET}"
+          exit 1
+        fi
+        ;;
+    esac
+  fi
 fi
-cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory${RESET}"; exit 1; }
+
+cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory ${BUILD_DIR}${RESET}"; exit 1; }
+
+# Diagnostic: list build directory entries and show git origins (helps detect false positives)
+echo "${CYAN}>> Build dir contents:${RESET}"
+for d in "$BUILD_DIR"/*; do
+  [ -e "$d" ] || continue
+  name=$(basename "$d")
+  if [ -d "$d/.git" ]; then
+    origin=$(cd "$d" && git config --get remote.origin.url 2>/dev/null || echo "no-origin")
+    echo " - ${name}: git repo (origin: ${origin})"
+  else
+    echo " - ${name}: not a git repo"
+  fi
+done
 
 # Extract token from credentials if not provided
 if [ -z "$GH_TOKEN" ] && [ -f "$HOME/.git-credentials" ]; then
@@ -497,7 +534,40 @@ get_repo_line() { sed -n "${1}p" /tmp/statik_repos.txt; }
 do_clone() {
   name="$1"; url="$2"
   target="$BUILD_DIR/$name"
-  if [ -d "$target/.git" ]; then echo "${YELLOW}>> $name already exists. Skipping clone.${RESET}"; return; fi
+
+  # If target exists and contains a git repo, verify remote origin before skipping
+  if [ -d "$target/.git" ]; then
+    if (cd "$target" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+      existing_origin=$(cd "$target" && git config --get remote.origin.url 2>/dev/null || true)
+      # Normalize URLs for comparison: strip .git and convert git@host:path to https://host/path
+      norm_existing=$(printf '%s' "$existing_origin" | sed -e 's/\.git$//' -e 's/^git@/https:\/\//' -e 's/:/\//')
+      norm_expected=$(printf '%s' "$url" | sed -e 's/\.git$//' -e 's/^git@/https:\/\//' -e 's/:/\//')
+      if [ -n "$existing_origin" ] && [ "$norm_existing" = "$norm_expected" ]; then
+        echo "${YELLOW}>> ${name} already exists at ${target} (origin matches ${existing_origin}). Skipping clone.${RESET}"
+        return 0
+      fi
+      echo "${YELLOW}>> ${name} already exists at ${target} with origin: ${existing_origin:-unknown} (expected: ${url}).${RESET}"
+      printf '%b' "${YELLOW}Remove ${target} and attempt fresh clone? (y/n): ${RESET}"
+      read -r RECLONE < /dev/tty
+      if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+        rm -rf "$target" && echo "${GREEN}Removed local copy of ${name}${RESET}"
+      else
+        echo "${YELLOW}Skipping clone for ${name}.${RESET}"
+        return 1
+      fi
+    fi
+  elif [ -d "$target" ]; then
+    echo "${YELLOW}>> ${target} exists but is not a git repository.${RESET}"
+    printf '%b' "${YELLOW}Remove ${target} and attempt clone? (y/n): ${RESET}"
+    read -r RECLONE < /dev/tty
+    if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+      rm -rf "$target" && echo "${GREEN}Removed local copy of ${name}${RESET}"
+    else
+      echo "${YELLOW}Skipping clone for ${name}.${RESET}"
+      return 1
+    fi
+  fi
+
   echo "${CYAN}Cloning $name into ${target}...${RESET}"
 
   # Helper to log git failures
@@ -678,7 +748,41 @@ if [ -f "${ACTIONS_FILE}" ]; then
     case "${paction}" in
       i)
         if [ -d "${BUILD_DIR}/${pname}/.git" ]; then
-          echo "${pname} already present, skipping clone"
+          if (cd "${BUILD_DIR}/${pname}" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+            existing_origin=$(cd "${BUILD_DIR}/${pname}" && git config --get remote.origin.url 2>/dev/null || true)
+            norm_existing=$(printf '%s' "$existing_origin" | sed -e 's/\.git$//' -e 's/^git@/https:\/\//' -e 's/:/\//')
+            norm_expected=$(printf '%s' "${purl}" | sed -e 's/\.git$//' -e 's/^git@/https:\/\//' -e 's/:/\//')
+            if [ -n "$existing_origin" ] && [ "$norm_existing" = "$norm_expected" ]; then
+              echo "${pname} already present at ${BUILD_DIR}/${pname} (origin matches). Skipping clone"
+            else
+              printf '%b' "${GOLD}${pname} has a .git but origin mismatch (found: ${existing_origin:-unknown}). Remove and re-clone? (y/n): ${RESET}"
+              read -r RECLONE < /dev/tty
+              if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+                rm -rf "${BUILD_DIR}/${pname}"
+                git clone "${purl}" "${BUILD_DIR}/${pname}" && echo "Cloned ${pname}" || echo "Failed to clone ${pname}"
+              else
+                echo "Skipping ${pname}"
+              fi
+            fi
+          else
+            printf '%b' "${GOLD}${pname} exists but is not a git repo. Remove and clone? (y/n): ${RESET}"
+            read -r RECLONE < /dev/tty
+            if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+              rm -rf "${BUILD_DIR}/${pname}"
+              git clone "${purl}" "${BUILD_DIR}/${pname}" && echo "Cloned ${pname}" || echo "Failed to clone ${pname}"
+            else
+              echo "Skipping ${pname}"
+            fi
+          fi
+        elif [ -d "${BUILD_DIR}/${pname}" ]; then
+          printf '%b' "${GOLD}${pname} exists but is not a git repo. Remove and clone? (y/n): ${RESET}"
+          read -r RECLONE < /dev/tty
+          if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+            rm -rf "${BUILD_DIR}/${pname}"
+            git clone "${purl}" "${BUILD_DIR}/${pname}" && echo "Cloned ${pname}" || echo "Failed to clone ${pname}"
+          else
+            echo "Skipping ${pname}"
+          fi
         else
           git clone "${purl}" "${BUILD_DIR}/${pname}" && echo "Cloned ${pname}" || echo "Failed to clone ${pname}"
         fi
