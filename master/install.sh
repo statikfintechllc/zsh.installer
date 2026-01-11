@@ -40,7 +40,7 @@ progress() {
 
 # -------- Step 0: prerequisites --------
 print_box "Step 0" "Installing build dependencies..."
-apk add --no-cache build-base ncurses-dev git zsh >/dev/null 2>&1
+apk add --no-cache build-base ncurses-dev git zsh bc >/dev/null 2>&1
 progress 1
 
 # -------- Step 1: Install Oh-My-Zsh --------
@@ -57,7 +57,7 @@ progress 0.5
 print_box "Step 3" "Configuring Git credential storage..."
 git config --global credential.helper store
 echo "${YELLOW}⚠ Enter Git credentials once when prompted:${RESET}"
-git ls-remote https://github.com/statikfintechllc/test-repo.git 2>/dev/null || true
+git ls-remote https://github.com/git/git.git 2>/dev/null || true
 progress 1
 
 # -------- Step 4: Final UI --------

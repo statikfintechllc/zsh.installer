@@ -46,7 +46,7 @@ chmod +x install.sh
 The installer performs the following steps:
 
 ### Step 0: Prerequisites
-- Installs build dependencies: `build-base`, `ncurses-dev`, `git`, `zsh`
+- Installs build dependencies: `build-base`, `ncurses-dev`, `git`, `zsh`, `bc`
 - Uses Alpine's `apk` package manager
 
 ### Step 1: Oh-My-Zsh Installation
@@ -111,11 +111,6 @@ git push  # No password prompt!
 ### Permission Denied Errors
 - Ensure the script has execute permissions: `chmod +x install.sh`
 - Check file ownership: `ls -la`
-
-### Progress Bar Not Displaying
-- The script requires `bc` for the progress animation
-- If you see errors about `bc`, install it manually: `apk add bc`
-- The installation will still complete successfully even if progress bars fail
 
 ## Security Notes
 
