@@ -17,6 +17,55 @@ This script automates the complete setup of Zsh on iSH for mobile development, i
 - Setting up Git credential storage for seamless GitHub development
 - Beautiful progress indicators and status updates
 
+## Visual Gallery 🖼️
+
+A quick visual guide to the installer's UI and progress. Click any thumbnail to jump to a larger view with descriptions. For a richer interactive experience (carousel, keyboard navigation, and big-square viewer), open the interactive gallery in your browser: `zsh.installer/gallery.html` (serve the repo locally with `python -m http.server` and visit `http://localhost:8000/zsh.installer/gallery.html`).
+
+<div id="gallery" align="center">
+<table>
+<tr>
+<td align="center">
+<a href="#viewer-phase-1"><img src="example.img/Phase_1.jpeg" alt="Phase 1" width="180" /></a><br/>
+**Phase 1**<br/><small>Installer start & initial prompts</small>
+</td>
+<td align="center">
+<a href="#viewer-phase-2"><img src="example.img/Phase_2.jpeg" alt="Phase 2" width="180" /></a><br/>
+**Phase 2**<br/><small>Progress indicators & configuration</small>
+</td>
+<td align="center">
+<a href="#viewer-phase-3"><img src="example.img/Phase_3.jpeg" alt="Phase 3" width="180" /></a><br/>
+**Phase 3**<br/><small>Completion & success message</small>
+</td>
+</tr>
+</table>
+</div>
+
+### Viewer
+
+<a id="viewer-phase-1"></a>
+#### Phase 1 — Installer start
+![Phase 1](example.img/Phase_1.jpeg)
+**Description:** Installer initial screen with setup prompts and progress UI.  
+[← Prev](#viewer-phase-3) | [Back to gallery](#gallery) | [Next →](#viewer-phase-2)
+
+---
+
+<a id="viewer-phase-2"></a>
+#### Phase 2 — In-progress
+![Phase 2](example.img/Phase_2.jpeg)
+**Description:** Shows progress indicators and configuration steps in action.  
+[← Prev](#viewer-phase-1) | [Back to gallery](#gallery) | [Next →](#viewer-phase-3)
+
+---
+
+<a id="viewer-phase-3"></a>
+#### Phase 3 — Completion
+![Phase 3](example.img/Phase_3.jpeg)
+**Description:** Final success message and next steps after installation.  
+[← Prev](#viewer-phase-2) | [Back to gallery](#gallery) | [Next →](#viewer-phase-1)
+
+---
+
 ## Features
 
 ✅ **One-Command Installation** - Single command setup via `sh -c`  

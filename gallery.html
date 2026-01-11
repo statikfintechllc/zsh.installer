@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zsh.installer — Visual Gallery</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 2rem; color:#111; background:#f7f7f7; }
+  .container { max-width: 900px; margin: 0 auto; text-align:center; }
+  .viewer { position: relative; width: 640px; height: 640px; margin: 0 auto; background:#222; display:flex; align-items:center; justify-content:center; border-radius:8px; overflow:hidden; }
+  .viewer img { width: auto; max-width:100%; max-height:100%; object-fit:contain; background: #fff; padding: 6px; border-radius:4px; }
+  .controls { margin-top: 0.5rem; }
+  .btn { border: none; background: #0366d6; color: white; padding:8px 12px; border-radius:6px; cursor:pointer; margin:0 6px; }
+  .btn:disabled { opacity:0.45; cursor:default; }
+  .navBtn { position:absolute; top:50%; transform:translateY(-50%); background: rgba(0,0,0,0.45); color:#fff; border:none; padding:12px; cursor:pointer; border-radius:4px; font-size:20px; }
+  .navBtn.left { left:8px; }
+  .navBtn.right { right:8px; }
+  .thumbs { display:flex; gap:8px; justify-content:center; margin-top:12px; }
+  .thumb { text-align:center; font-size:12px; color:#333; }
+  .thumb img { width:120px; height:80px; object-fit:cover; border:2px solid transparent; border-radius:4px; cursor:pointer; }
+  .thumb.selected img { border-color:#0366d6; }
+  .caption { margin-top:8px; font-size:0.95rem; }
+  .info { margin-top:8px; color:#555; }
+  .small { font-size:0.85rem; color:#666; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>zsh.installer — Visual Gallery</h1>
+  <p class="small">Click thumbnails or use <strong>←</strong> / <strong>→</strong> keys to cycle images. Click the image to open the full-size file in a new tab.</p>
+  <p class="small">Tip: To view this page in a browser from this repo, run <code>python -m http.server</code> at the repo root and open <code>http://localhost:8000/zsh.installer/gallery.html</code>.</p>
+
+  <div class="viewer" id="viewer">
+    <button class="navBtn left" id="prevBtn" aria-label="Previous image" title="Previous">‹</button>
+    <a id="imageLink" href="#" target="_blank" rel="noopener noreferrer"><img id="currentImage" src="" alt="" /></a>
+    <button class="navBtn right" id="nextBtn" aria-label="Next image" title="Next">›</button>
+  </div>
+
+  <div class="caption" id="caption"></div>
+
+  <div class="controls">
+    <button class="btn" id="firstBtn">⟲ First</button>
+    <button class="btn" id="lastBtn">Last ⟲</button>
+  </div>
+
+  <div class="thumbs" id="thumbs"></div>
+  <div class="info">Images are served from <code>example.img/</code></div>
+</div>
+
+<script>
+  const images = [
+    {src:'example.img/Phase_1.jpeg', title:'Phase 1 — Installer start', caption:'Installer initial screen with setup prompts and progress UI.'},
+    {src:'example.img/Phase_2.jpeg', title:'Phase 2 — In-progress', caption:'Shows progress indicators and configuration steps in action.'},
+    {src:'example.img/Phase_3.jpeg', title:'Phase 3 — Completion', caption:'Final success message and next steps after installation.'}
+  ];
+  let idx = 0;
+  const currentImg = document.getElementById('currentImage');
+  const imageLink = document.getElementById('imageLink');
+  const captionEl = document.getElementById('caption');
+  const thumbsEl = document.getElementById('thumbs');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const firstBtn = document.getElementById('firstBtn');
+  const lastBtn = document.getElementById('lastBtn');
+
+  function show(i) {
+    idx = (i + images.length) % images.length;
+    const img = images[idx];
+    currentImg.src = img.src;
+    currentImg.alt = img.title;
+    imageLink.href = img.src;
+    captionEl.innerHTML = '<strong>' + img.title + '</strong><br>' + img.caption;
+    Array.from(thumbsEl.children).forEach((el, j) => { el.classList.toggle('selected', j === idx); });
+  }
+  function prev(){ show(idx - 1); }
+  function next(){ show(idx + 1); }
+  prevBtn.addEventListener('click', prev);
+  nextBtn.addEventListener('click', next);
+  firstBtn.addEventListener('click', () => show(0));
+  lastBtn.addEventListener('click', () => show(images.length - 1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') prev();
+    if (e.key === 'ArrowRight') next();
+  });
+
+  images.forEach((img,i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    d.innerHTML = '<img src="'+img.src+'" alt="'+img.title+'"><div class="small">'+img.title+'</div>';
+    d.onclick = () => show(i);
+    thumbsEl.appendChild(d);
+  });
+
+  // init
+  show(0);
+</script>
+</body>
+</html>
