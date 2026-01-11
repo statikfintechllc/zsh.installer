@@ -256,6 +256,7 @@ setup_zsh_default() {
 # EXECUTION: PHASE 1 (INSTALLATION)
 # =====================================================
 clear
+start_blackout
 check_existing_setup
 
 # Determine if we should skip zsh-specific steps (Windows/WSL)
@@ -320,7 +321,7 @@ if [ -n "$EXISTING_USER" ] && [ -n "$EXISTING_EMAIL" ] && [ "$HAS_CREDENTIALS" =
   echo "   Email: $EXISTING_EMAIL"
   echo "   Credentials: Stored"
   printf "${YELLOW}Use existing configuration? (y/n): ${RESET}"
-  read -r USE_EXISTING
+  read -r USE_EXISTING < /dev/tty
   if printf '%s' "$USE_EXISTING" | grep -qi '^y' >/dev/null 2>&1; then
     GH_USER="$EXISTING_USER"
     GH_EMAIL="$EXISTING_EMAIL"
@@ -335,13 +336,13 @@ fi
 if [ "$SKIP_GIT_CONFIG" = false ]; then
   echo ""
   printf "${BOLD}GitHub Username:${RESET} "
-  read -r GH_USER
+  read -r GH_USER < /dev/tty
   if [ -z "$GH_USER" ]; then echo "${RED}Error: Username cannot be empty${RESET}"; exit 1; fi
   printf "${BOLD}GitHub Email:   ${RESET} "
-  read -r GH_EMAIL
+  read -r GH_EMAIL < /dev/tty
   if [ -z "$GH_EMAIL" ]; then echo "${RED}Error: Email cannot be empty${RESET}"; exit 1; fi
   printf "${BOLD}GitHub Token:   ${RESET} "
-  read -s GH_TOKEN
+  read -s GH_TOKEN < /dev/tty
   echo ""
 
   # --- APPLYING GIT CONFIG ---
@@ -392,7 +393,7 @@ JSON_DATA=$(curl -s -H "$AUTH_HEADER" "https://api.github.com/users/$API_USER/re
 USE_JQ=true
 if ! command -v jq >/dev/null 2>&1; then
   printf "${YELLOW}Note: 'jq' is required to parse GitHub JSON efficiently and was not found. Install now? (y/n): ${RESET}"
-  read -r INSTALL_JQ
+  read -r INSTALL_JQ < /dev/tty
   if printf '%s' "$INSTALL_JQ" | grep -qi '^y' >/dev/null 2>&1; then
     case $OS in
       alpine)
@@ -492,7 +493,7 @@ do_commit() {
   name="$1"
   if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
   echo "${CYAN}Enter commit message for $name:${RESET}"
-  read -r CM
+  read -r CM < /dev/tty
   if [ -z "$CM" ]; then echo "${YELLOW}No message provided. Skipping commit.${RESET}"; return; fi
   (cd "$name" && git add -A && git commit -m "$CM" >/dev/null 2>&1 && git push) && echo "${GREEN}Committed & pushed in $name${RESET}" || echo "${YELLOW}Nothing to commit or push failed in $name${RESET}"
 }
@@ -500,88 +501,157 @@ do_commit() {
 do_delete() {
   name="$1"
   echo "${RED}Confirm delete of ${name}? Type 'yes' to confirm:${RESET}"
-  read -r CONF
+  read -r CONF < /dev/tty
   if [ "$CONF" = "yes" ]; then rm -rf "$name" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
 }
 
-ACTIONS_FILE="/tmp/statik_actions.txt"
-rm -f "$ACTIONS_FILE"
-count=0
-echo "${CYAN}Phase: Selection (choose action for each target). Choices will be executed after selection completes.${RESET}"
-while IFS='|' read -r rname rurl; do
-  count=$((count + 1))
-  printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
-  printf '%b' "${BOLD}Target ${count}/${TOTAL_REPOS}:${RESET} "
-  printf '%b\n' "${rname}"
-
-  # Status shown on demand (type 's') to avoid spamming output
-
-  # Per-repo selection prompt: record action only; allow status checks
+# Hand off to zsh if available, otherwise keep sh selection/execution (TTY-safe)
+if command -v zsh >/dev/null 2>&1; then
+  end_blackout
+  export BUILD_DIR GH_USER
+  cat << 'ZSHPHASE' > /tmp/statik_phase2.zsh
+#!/usr/bin/env zsh
+# Phase 2 (zsh): red/gold theme + selection-first then execution
+RED="$(printf '\033[38;5;124m')"
+GOLD="$(printf '\033[38;5;220m')"
+RESET="$(printf '\033[0m')"
+clear
+printf '%b\n' "${RED}"
+cat << 'HEADER'
+ _________________________________________
+|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|
+ STATIK_FINTECH // SYSTEM_HANDOFF
+|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
+HEADER
+printf '%b\n' "${RESET}"
+ACTIONS_FILE=/tmp/statik_actions.txt
+rm -f "${ACTIONS_FILE}"
+i=0
+TOTAL_REPOS=$(wc -l < /tmp/statik_repos.txt || echo 0)
+while IFS='|' read -r name url; do
+  i=$((i+1))
+  printf '%b\n' "${GOLD}Target ${i}/${TOTAL_REPOS}: ${name}${RESET}"
   while true; do
-    printf '%b' "${YELLOW}Select action for ${rname} [i=install u=update s=status c=commit d=delete p=pass q=quit]: ${RESET}"
-    read -r REPLY_ACTION
-    case "$REPLY_ACTION" in
+    printf '%b' "${RED}Action for ${name} [i=install u=update s=status c=commit d=delete p=pass q=quit]: ${RESET}"
+    read -r action < /dev/tty
+    case "${action}" in
       i|u|c|d|p)
-        printf '%s|%s|%s\n' "$rname" "$rurl" "$REPLY_ACTION" >> "$ACTIONS_FILE"
+        printf '%s|%s|%s\n' "${name}" "${url}" "${action}" >> "${ACTIONS_FILE}"
         break
         ;;
       s)
-        do_status "$rname"
+        if [ -d "${BUILD_DIR}/${name}" ]; then
+          (cd "${BUILD_DIR}/${name}" && git status --short) || echo "Failed to show status for ${name}"
+        else
+          echo "Repo not present"
+        fi
         ;;
       q)
-        printf '%b\n' "${GREEN}Selection aborted by user.${RESET}"
+        echo "User aborted"
         exit 0
         ;;
       *)
-        printf '%b\n' "${YELLOW}Unknown action: ${REPLY_ACTION}${RESET}"
+        echo "Unknown action: ${action}"
         ;;
     esac
   done
 done < /tmp/statik_repos.txt
 
-# =====================================================
-# EXECUTION: PROCESS PRESET ACTIONS
-# =====================================================
-if [ ! -f "$ACTIONS_FILE" ]; then
-  echo "${YELLOW}No actions selected. Exiting.${RESET}"
-  exit 0
+if [ -f "${ACTIONS_FILE}" ]; then
+  echo "Executing actions..."
+  while IFS='|' read -r pname purl paction; do
+    case "${paction}" in
+      i)
+        if [ -d "${BUILD_DIR}/${pname}/.git" ]; then
+          echo "${pname} already present, skipping clone"
+        else
+          git clone "${purl}" "${BUILD_DIR}/${pname}" && echo "Cloned ${pname}" || echo "Failed to clone ${pname}"
+        fi
+        ;;
+      u)
+        if [ -d "${BUILD_DIR}/${pname}/.git" ]; then
+          (cd "${BUILD_DIR}/${pname}" && git pull --ff-only) && echo "Updated ${pname}" || echo "Update failed for ${pname}"
+        else
+          echo "${pname} not present to update"
+        fi
+        ;;
+      c)
+        if [ -d "${BUILD_DIR}/${pname}/.git" ]; then
+          printf '%b' "${GOLD}Enter commit message for ${pname}:${RESET}"
+          read -r CM < /dev/tty
+          (cd "${BUILD_DIR}/${pname}" && git add -A && git commit -m "${CM}" >/dev/null 2>&1 && git push) && echo "Committed & pushed ${pname}" || echo "Nothing to commit or push failed for ${pname}"
+        else
+          echo "${pname} not present"
+        fi
+        ;;
+      d)
+        printf '%b' "${RED}Confirm delete of ${pname}? Type 'yes' to confirm:${RESET}"
+        read -r CONF < /dev/tty
+        if [ "${CONF}" = "yes" ]; then rm -rf "${BUILD_DIR}/${pname}" && echo "Deleted ${pname}" || echo "Failed to delete ${pname}"; fi
+        ;;
+      p)
+        echo "Skipped ${pname}"
+        ;;
+    esac
+  done < "${ACTIONS_FILE}"
+  rm -f "${ACTIONS_FILE}"
 fi
 
-echo "${CYAN}Phase: Execution — running selected actions...${RESET}"
-PROC_COUNT=0
-while IFS='|' read -r pname purl paction; do
-  PROC_COUNT=$((PROC_COUNT + 1))
-  printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
-  printf '%b\n' "${BOLD}Processing ${PROC_COUNT}/${TOTAL_REPOS}: ${pname}${RESET}"
-  case "$paction" in
-    i)
-      do_clone "$pname" "$purl"
-      ;;
-    u)
-      do_update "$pname"
-      ;;
-    s)
-      do_status "$pname"
-      ;;
-    c)
-      do_commit "$pname"
-      ;;
-    d)
-      do_delete "$pname"
-      ;;
-    p)
-      printf '%b\n' "${CYAN}Skipped ${pname}${RESET}"
-      ;;
-    *)
-      printf '%b\n' "${YELLOW}Unknown preset action: ${paction} for ${pname}${RESET}"
-      ;;
-  esac
-done < "$ACTIONS_FILE"
+echo "${GOLD}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
+ZSHPHASE
+  chmod +x /tmp/statik_phase2.zsh
+  exec zsh /tmp/statik_phase2.zsh
+else
+  # Fallback: keep sh-based selection/execution (TTY-safe)
+  end_blackout
+  ACTIONS_FILE="/tmp/statik_actions.txt"
+  rm -f "$ACTIONS_FILE"
+  count=0
+  echo "${CYAN}Phase: Selection (choose action for each target). Choices will be executed after selection completes.${RESET}"
+  while IFS='|' read -r rname rurl; do
+    count=$((count + 1))
+    printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
+    printf '%b' "${BOLD}Target ${count}/${TOTAL_REPOS}:${RESET} "
+    printf '%b\n' "${rname}"
+    while true; do
+      printf '%b' "${YELLOW}Select action for ${rname} [i=install u=update s=status c=commit d=delete p=pass q=quit]: ${RESET}"
+      read -r REPLY_ACTION < /dev/tty
+      case "$REPLY_ACTION" in
+        i|u|c|d|p)
+          printf '%s|%s|%s\n' "$rname" "$rurl" "$REPLY_ACTION" >> "$ACTIONS_FILE"
+          break
+          ;;
+        s)
+          do_status "$rname"
+          ;;
+        q)
+          echo "Selection aborted by user."
+          exit 0
+          ;;
+        *)
+          echo "Unknown action: $REPLY_ACTION"
+          ;;
+      esac
+    done
+  done < /tmp/statik_repos.txt
 
-rm -f "$ACTIONS_FILE"
-
-echo "${GREEN}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
-if [ -n "$WSL_DISTRO_NAME" ]; then
-  echo "(Access from Windows: \\wsl\\${WSL_DISTRO_NAME}${BUILD_DIR})"
+  echo "${CYAN}Phase: Execution — running selected actions...${RESET}"
+  PROC_COUNT=0
+  while IFS='|' read -r pname purl paction; do
+    PROC_COUNT=$((PROC_COUNT + 1))
+    printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
+    printf '%b\n' "${BOLD}Processing ${PROC_COUNT}/${TOTAL_REPOS}: ${pname}${RESET}"
+    case "$paction" in
+      i) do_clone "$pname" "$purl" ;;
+      u) do_update "$pname" ;;
+      s) do_status "$pname" ;;
+      c) do_commit "$pname" ;;
+      d) do_delete "$pname" ;;
+      p) printf '%b\n' "${CYAN}Skipped ${pname}${RESET}" ;;
+      *) printf '%b\n' "${YELLOW}Unknown preset action: ${paction} for ${pname}${RESET}" ;;
+    esac
+  done < "$ACTIONS_FILE"
+  rm -f "$ACTIONS_FILE"
+  echo "${GREEN}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
 fi
-sleep 1
+

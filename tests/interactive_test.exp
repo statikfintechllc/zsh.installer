@@ -1,0 +1,24 @@
+#!/usr/bin/expect -f
+# Simple interactive test to verify pressing 'y' doesn't break selection loop
+set timeout 30
+# Run installer with PATH set to hide zsh/jq so we exercise sh fallback
+spawn env PATH=/nada:$env(PATH) sh ./master/ish.zsh.installer
+expect {
+  -re "Use existing configuration\? \(y/n\):" {
+    send "y\r"
+    exp_continue
+  }
+  -re "Select action for .*:\s*$" {
+    send "p\r"
+    exp_continue
+  }
+  -re "Phase: Execution" {
+    send_user "Execution phase reached\n"
+  }
+  timeout {
+    send_user "Test timed out waiting for expected prompts\n"
+    exit 2
+  }
+}
+expect eof
+exit 0
