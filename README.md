@@ -2,10 +2,17 @@
 
 An automated installer script for setting up Zsh with Oh-My-Zsh on iSH (iOS Shell) with seamless GitHub credential configuration.
 
-## Quick Start
+## Installation
+
+Run the following command in your iSH terminal:
 
 ```shell
+# Using curl
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/ish.zsh.installer)"
+```
+```shell
+# Using wget
+sh -c "$(wget -qO- https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/ish.zsh.installer)"
 ```
 
 ## Overview
@@ -31,28 +38,12 @@ This script automates the complete setup of Zsh on iSH for mobile development, i
 - **Internet Connection** - Required for downloading packages and Oh-My-Zsh
 - **Alpine Linux** - iSH runs Alpine Linux by default
 
-## Installation
-
-Run the following command in your iSH terminal:
-
-```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh)"
-```
-
-### Alternative: Download and Run
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh -o installer.sh
-chmod +x installer.sh
-./installer.sh
-```
-
 ## What the Script Does
 
 The installer performs the following steps:
 
 ### Step 0: Prerequisites
-- Installs build dependencies: `build-base`, `ncurses-dev`, `git`, `zsh`, `bc`
+- Installs build dependencies: `build-base`, `ncurses-dev`, `git`, `zsh`, `bc`, `jq`
 - Uses Alpine's `apk` package manager
 
 ### Step 1: Oh-My-Zsh Installation
