@@ -2,6 +2,12 @@
 
 An automated installer script for setting up Zsh with Oh-My-Zsh on iSH (iOS Shell) with seamless GitHub credential configuration.
 
+## Quick Start
+
+```shell
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh)"
+```
+
 ## Overview
 
 This script automates the complete setup of Zsh on iSH for mobile development, including:
@@ -30,15 +36,15 @@ This script automates the complete setup of Zsh on iSH for mobile development, i
 Run the following command in your iSH terminal:
 
 ```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/master/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh)"
 ```
 
 ### Alternative: Download and Run
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/master/install.sh -o install.sh
-chmod +x install.sh
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/installer.sh -o installer.sh
+chmod +x installer.sh
+./installer.sh
 ```
 
 ## What the Script Does
@@ -54,13 +60,14 @@ The installer performs the following steps:
 - Runs in unattended mode for automated setup
 
 ### Step 2: Default Shell Configuration
-- Adds `exec zsh` to `~/.profile`
+- Adds conditional `exec zsh` to `~/.profile` (avoids nested shells)
 - Ensures Zsh launches automatically on login
 
 ### Step 3: Git Credential Setup
 - Configures `git config --global credential.helper store`
-- Prompts for GitHub credentials (stored securely for future use)
-- Credentials are saved to `~/.git-credentials`
+- Interactive UI prompts for GitHub username and token/password
+- Credentials are saved to `~/.git-credentials` in plain text
+- File permissions set to 600 (owner read/write only)
 
 ### Step 4: Completion
 - Displays installation summary with status indicators
@@ -114,9 +121,11 @@ git push  # No password prompt!
 
 ## Security Notes
 
-⚠️ **Remote Script Execution**: This installer downloads and executes scripts from the internet (including Oh-My-Zsh installation). Always review scripts before running them with `sh -c "$(curl ..."` commands.
+⚠️ **Remote Script Execution**: This installer downloads and executes scripts from the internet (including Oh-My-Zsh installation from the mutable `master` branch). Always review scripts before running them with `sh -c "$(curl ..."` commands. If the upstream repository, GitHub account, or network path is compromised, an attacker could serve arbitrary shell commands. To reduce supply-chain risk, consider reviewing the script source code before execution.
 
-⚠️ **Credential Storage**: This script uses `credential.helper store` which stores credentials in **plain text** in `~/.git-credentials`. For enhanced security, consider using a personal access token instead of your password.
+⚠️ **Credential Storage**: This script uses `credential.helper store` which stores credentials in **plain text** in `~/.git-credentials`. This applies to both passwords and GitHub personal access tokens (PATs)—if you use a PAT, it will also be written to this plain-text file.
+
+For maximum security on a shared or untrusted device, avoid using `credential.helper store` entirely. Instead, enter credentials manually when prompted, or use a more secure credential helper if one is available in your iSH/Alpine environment.
 
 **Alternative credential helpers:**
 - `git config --global credential.helper cache` - Stores credentials in memory for 15 minutes (more secure, but temporary)
@@ -125,7 +134,7 @@ git push  # No password prompt!
 To create a GitHub personal access token:
 1. Go to GitHub Settings → Developer settings → Personal access tokens
 2. Generate new token with appropriate permissions
-3. Use the token as your password when prompted
+3. Use the token as your password when prompted by the installer
 
 ## Customization
 
