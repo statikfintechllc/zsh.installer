@@ -17,17 +17,26 @@ RESET='\033[0m'
 
 # --- DETECT ENVIRONMENT ---
 detect_os() {
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$ID
-  elif [ "$(uname)" = "Darwin" ]; then
-    OS="macos"
-  else
-    OS="unknown"
-  fi
+  uname_s=$(uname -s 2>/dev/null || echo Unknown)
+  case "$uname_s" in
+    *MINGW*|*MSYS*|*CYGWIN*|*Windows_NT*)
+      OS="windows"
+      ;;
+    Darwin*)
+      OS="macos"
+      ;;
+    *)
+      if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+      else
+        OS="unknown"
+      fi
+      ;;
+  esac
 
   # Check if running in WSL
-  if grep -qi microsoft /proc/version 2>/dev/null; then
+  if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
     WSL=true
   else
     WSL=false
@@ -246,309 +255,235 @@ setup_zsh_default() {
 clear
 check_existing_setup
 
+# Determine if we should skip zsh-specific steps (Windows/WSL)
+SKIP_ZSH_INSTALL=false
+if [ "$OS" = "windows" ] || [ "$WSL" = true ]; then
+  SKIP_ZSH_INSTALL=true
+fi
+
 # Only run installation if not already set up
 if [ "$SKIP_INSTALL" = false ]; then
   install_packages
-  install_omz
-  setup_zsh_default
-  
-  # Verify zsh is installed before handoff
-  if ! command -v zsh >/dev/null 2>&1; then
-    echo "${RED}Error: Zsh not found. Cannot proceed.${RESET}"
-    exit 1
+  if [ "$SKIP_ZSH_INSTALL" = false ]; then
+    install_omz
+    setup_zsh_default
+
+    # Verify zsh is installed before handoff
+    if ! command -v zsh >/dev/null 2>&1; then
+      echo "${RED}Error: Zsh not found. Cannot proceed.${RESET}"
+      exit 1
+    fi
+  else
+    echo "${YELLOW}>> Skipping zsh/Oh-My-Zsh installation on Windows/WSL${RESET}"
   fi
 else
-  # In update mode, just verify zsh exists
-  if ! command -v zsh >/dev/null 2>&1; then
-    echo "${RED}Error: Zsh not found but .zshrc exists. Corrupted installation?${RESET}"
-    exit 1
+  # In update mode
+  if [ "$SKIP_ZSH_INSTALL" = false ]; then
+    if ! command -v zsh >/dev/null 2>&1; then
+      echo "${RED}Error: Zsh not found but .zshrc exists. Corrupted installation?${RESET}"
+      exit 1
+    fi
+  else
+    echo "${YELLOW}>> Running in Windows/WSL update mode: skipping zsh verification${RESET}"
   fi
   echo "${GREEN}>> Skipping to repository sync...${RESET}"
   sleep 1
 fi
 
 # =====================================================
-# EXECUTION: PHASE 2 (HANDOFF TO ZSH)
+# EXECUTION: PHASE 2 (INTERACTIVE REPO MANAGEMENT)
 # =====================================================
 
-cat << 'ZSHEOF' > /tmp/statik_sync_core.zsh
-#!/bin/zsh
-
-# --- PHASE 2 COLORS (Red Theme) ---
-RED='\033[0;31m'
-B_RED='\033[1;31m'
-DARK='\033[2;31m'
-GOLD='\033[1;33m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-RESET='\033[0m'
-
 clear
-# Digital Rain Header
-echo "${DARK}"
-cat << "HEADER"
- _________________________________________
-|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|1|0|
- STATIK_FINTECH // SYSTEM_HANDOFF
-|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|_|
-HEADER
-echo "${RESET}"
+print_box "Phase 2" "Handoff & Repo Management"
+
+echo ""
+echo "${CYAN}_________________________________________${RESET}"
+echo " STATIK_FINTECH // SYSTEM_HANDOFF"
+echo "${CYAN}-----------------------------------------${RESET}"
 
 # --- CHECK EXISTING GIT CONFIG ---
 EXISTING_USER=$(git config --global user.name 2>/dev/null)
 EXISTING_EMAIL=$(git config --global user.email 2>/dev/null)
 HAS_CREDENTIALS=false
-
 if [ -f "$HOME/.git-credentials" ]; then
   HAS_CREDENTIALS=true
 fi
 
-# --- GIT CONFIGURATION UI ---
+SKIP_GIT_CONFIG=false
 if [ -n "$EXISTING_USER" ] && [ -n "$EXISTING_EMAIL" ] && [ "$HAS_CREDENTIALS" = true ]; then
   echo "${GREEN}>> EXISTING GIT CONFIGURATION DETECTED${RESET}"
-  echo "${DARK}   User:  ${RESET}$EXISTING_USER"
-  echo "${DARK}   Email: ${RESET}$EXISTING_EMAIL"
-  echo "${GREEN}   Credentials: ${RESET}Stored"
-  echo ""
+  echo "   User:  $EXISTING_USER"
+  echo "   Email: $EXISTING_EMAIL"
+  echo "   Credentials: Stored"
   printf "${YELLOW}Use existing configuration? (y/n): ${RESET}"
   read -r USE_EXISTING
-  echo ""
-  
-  if [[ "$USE_EXISTING" =~ ^[Yy]$ ]]; then
-    echo "${GREEN}>> Using existing GitHub configuration${RESET}"
+  if printf '%s' "$USE_EXISTING" | grep -qi '^y' >/dev/null 2>&1; then
     GH_USER="$EXISTING_USER"
     GH_EMAIL="$EXISTING_EMAIL"
     SKIP_GIT_CONFIG=true
   else
-    echo "${B_RED}>> RECONFIGURING CREDENTIALS...${RESET}"
     SKIP_GIT_CONFIG=false
   fi
 else
-  echo "${B_RED}>> INITIALIZING CREDENTIAL PROTOCOL...${RESET}"
   SKIP_GIT_CONFIG=false
 fi
 
 if [ "$SKIP_GIT_CONFIG" = false ]; then
   echo ""
-  echo "${DARK}Please enter GitHub Identity for Global Config:${RESET}"
-  
-  # 1. Username
-  printf "${B_RED}GitHub Username:${RESET} "
-  read GH_USER
-  # Basic validation
-  if [ -z "$GH_USER" ]; then
-    echo "${RED}Error: Username cannot be empty${RESET}"
-    exit 1
-  fi
-  
-  # 2. Email (Crucial for commits)
-  printf "${B_RED}GitHub Email:   ${RESET} "
-  read GH_EMAIL
-  if [ -z "$GH_EMAIL" ]; then
-    echo "${RED}Error: Email cannot be empty${RESET}"
-    exit 1
-  fi
-  
-  # 3. Token
-  printf "${B_RED}GitHub Token:   ${RESET} "
+  printf "${BOLD}GitHub Username:${RESET} "
+  read -r GH_USER
+  if [ -z "$GH_USER" ]; then echo "${RED}Error: Username cannot be empty${RESET}"; exit 1; fi
+  printf "${BOLD}GitHub Email:   ${RESET} "
+  read -r GH_EMAIL
+  if [ -z "$GH_EMAIL" ]; then echo "${RED}Error: Email cannot be empty${RESET}"; exit 1; fi
+  printf "${BOLD}GitHub Token:   ${RESET} "
   read -s GH_TOKEN
   echo ""
-  echo ""
-  
-  if [ -z "$GH_TOKEN" ]; then
-    echo "${RED}Warning: No token provided. API rate limits will apply.${RESET}"
-    sleep 2
-  fi
-  
+
   # --- APPLYING GIT CONFIG ---
-  echo "${DARK}>> WRITING CONFIGURATION...${RESET}"
-  
-  # Set Global Name/Email
-  git config --global user.name "$GH_USER" || {
-    echo "${RED}Error: Failed to set git username${RESET}"
-    exit 1
-  }
-  
-  git config --global user.email "$GH_EMAIL" || {
-    echo "${RED}Error: Failed to set git email${RESET}"
-    exit 1
-  }
-  
-  # Set Credential Helper (Store allows permanent login)
+  git config --global user.name "$GH_USER" || { echo "${RED}Error: Failed to set git username${RESET}"; exit 1; }
+  git config --global user.email "$GH_EMAIL" || { echo "${RED}Error: Failed to set git email${RESET}"; exit 1; }
   git config --global credential.helper store
-  
-  # Create credentials file properly with URL encoding
+
   if [ -n "$GH_USER" ] && [ -n "$GH_TOKEN" ]; then
-    # More comprehensive encoding
     GH_USER_ENC=$(printf '%s' "$GH_USER" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
     GH_TOKEN_ENC=$(printf '%s' "$GH_TOKEN" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
-    
-    # Write to ~/.git-credentials with explicit newline
-    printf "https://%s:%s@github.com\n" "$GH_USER_ENC" "$GH_TOKEN_ENC" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
-    printf "${GOLD}[ SUCCESS ] Credentials Encrypted & Stored.${RESET}\n"
+    printf "https://%s:%s@github.com\n" "$GH_USER_ENC" "$GH_TOKEN_ENC" > "$HOME/.git-credentials"
+    chmod 600 "$HOME/.git-credentials"
+    printf "${GREEN}[ SUCCESS ] Credentials Encrypted & Stored.${RESET}\n"
   else
-    printf "${RED}[ WARNING ] Incomplete credentials. Skipping Auth write.${RESET}\n"
+    printf "${YELLOW}[ WARNING ] Incomplete credentials. Skipping Auth write.${RESET}\n"
   fi
   sleep 1
 fi
 
-# =====================================================
-# EXECUTION: PHASE 3 (REPO SYNC)
-# =====================================================
-
-# Spinner Function with better process handling
-spinner() {
-    local pid=$1
-    local msg=$2
-    local delay=0.1
-    local spinstr='⣾⣽⣻⢿⡿⣟⣯⣷' 
-    local i=0
-    
-    while kill -0 "$pid" 2>/dev/null; do
-        i=$(( (i+1) % 8 ))
-        printf "\r${DARK}%-20s${B_RED} [ %s ]${RESET}" "$msg" "${spinstr:$i:1}"
-        sleep $delay
-    done
-    
-    # Wait for process to fully complete
-    wait "$pid" 2>/dev/null
-    return $?
-}
-
-printf "\n${B_RED}>> ENGAGING REPO SYNC ENGINE...${RESET}\n"
-
-# Determine home directory for builds
-# WSL can use Windows home or Linux home - prefer Linux
-if [ -n "$WSL_DISTRO_NAME" ]; then
-    BUILD_DIR="$HOME/builds"
+# Determine builds directory: prefer PWD/builds, fallback to HOME/builds, else create PWD/builds
+if [ -d "$PWD/builds" ]; then
+  BUILD_DIR="$PWD/builds"
+elif [ -d "$HOME/builds" ]; then
+  BUILD_DIR="$HOME/builds"
 else
-    BUILD_DIR="$HOME/builds"
+  BUILD_DIR="$PWD/builds"
+  mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory${RESET}"; exit 1; }
 fi
-
-# Create builds directory if it doesn't exist and enter it
-if [ ! -d "$BUILD_DIR" ]; then
-    mkdir -p "$BUILD_DIR" || {
-        echo "${RED}Error: Cannot create builds directory${RESET}"
-        exit 1
-    }
-fi
-cd "$BUILD_DIR" || {
-    echo "${RED}Error: Cannot access builds directory${RESET}"
-    exit 1
-}
+cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory${RESET}"; exit 1; }
 
 # Extract token from credentials if not provided
 if [ -z "$GH_TOKEN" ] && [ -f "$HOME/.git-credentials" ]; then
-    # Try to extract token from stored credentials
-    GH_TOKEN=$(grep 'github.com' "$HOME/.git-credentials" | sed -n 's/.*://[^:]*:\([^@]*\)@.*/\1/p' | head -1)
+  GH_TOKEN=$(grep 'github.com' "$HOME/.git-credentials" | sed -E 's@.*:([^@]+)@.*@\1@' | head -n1 2>/dev/null || true)
 fi
 
-# Use the token for the API call (Avoids API limits)
 if [ -n "$GH_TOKEN" ]; then
-    AUTH_HEADER="Authorization: token $GH_TOKEN"
+  AUTH_HEADER="Authorization: token $GH_TOKEN"
 else
-    AUTH_HEADER="User-Agent: statik-bot"
+  AUTH_HEADER="User-Agent: statik-bot"
 fi
 
-# Use configured git user for API call
 API_USER="${GH_USER:-$EXISTING_USER}"
+if [ -z "$API_USER" ]; then echo "${RED}Error: No GitHub username available${RESET}"; exit 1; fi
 
-if [ -z "$API_USER" ]; then
-    echo "${RED}Error: No GitHub username available${RESET}"
-    exit 1
-fi
-
-JSON_DATA=$(curl -s -H "$AUTH_HEADER" "https://api.github.com/users/$API_USER/repos?per_page=100")
-
-# Check if we got valid JSON or an error
+JSON_DATA=$(curl -s -H "$AUTH_HEADER" "https://api.github.com/users/$API_USER/repos?per_page=200")
 IS_VALID=$(echo "$JSON_DATA" | jq -r 'if type=="array" then "yes" else "no" end' 2>/dev/null)
-
 if [ "$IS_VALID" != "yes" ]; then
-    echo "${RED}[ ERROR ] Unable to fetch repos. Check Token or API Status.${RESET}"
-    ERROR_MSG=$(echo "$JSON_DATA" | jq -r '.message // "Unknown error"' 2>/dev/null)
-    echo "API Response: $ERROR_MSG"
-    exit 1
+  echo "${RED}[ ERROR ] Unable to fetch repos. Check Token or API Status.${RESET}"
+  ERROR_MSG=$(echo "$JSON_DATA" | jq -r '.message // "Unknown error"' 2>/dev/null)
+  echo "API Response: $ERROR_MSG"
+  exit 1
 fi
 
-# Get repo list and filter empty lines
-REPO_LIST=$(echo "$JSON_DATA" | jq -r '.[].clone_url' | grep -v '^$')
-TOTAL_REPOS=$(echo "$REPO_LIST" | wc -l | tr -d ' ')
+echo "$JSON_DATA" | jq -r '.[] | "\(.name)|\(.clone_url)"' > /tmp/statik_repos.txt
+TOTAL_REPOS=$(wc -l < /tmp/statik_repos.txt | tr -d ' ')
+if [ "${TOTAL_REPOS:-0}" -eq 0 ]; then echo "${YELLOW}>> NO REPOSITORIES FOUND${RESET}"; exit 0; fi
+printf "\r${YELLOW}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n"
 
-# Handle case of no repos
-if [ "$TOTAL_REPOS" -eq 0 ] || [ -z "$REPO_LIST" ]; then
-    echo "${GOLD}>> NO REPOSITORIES FOUND${RESET}"
-    exit 0
-fi
+get_repo_line() { sed -n "${1}p" /tmp/statik_repos.txt; }
 
-printf "\r${GOLD}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n"
+do_clone() { local name="$1"; local url="$2";
+  if [ -d "$name/.git" ]; then echo "${YELLOW}>> $name already exists. Skipping clone.${RESET}"; return; fi
+  echo "${CYAN}Cloning $name...${RESET}"
+  if git clone "$url" "$name" >/dev/null 2>&1; then echo "${GREEN}Cloned $name${RESET}"; else echo "${RED}Failed to clone $name${RESET}"; fi
+}
 
-# Process repos with proper COUNT tracking
-COUNT=1
-CLONED=0
-UPDATED=0
-FAILED=0
+do_update() { local name="$1";
+  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present. Use install first.${RESET}"; return; fi
+  echo "${CYAN}Updating $name...${RESET}"
+  (cd "$name" && git pull --ff-only) >/dev/null 2>&1 && echo "${GREEN}Updated $name${RESET}" || echo "${YELLOW}No changes or update failed for $name${RESET}"
+}
 
-while IFS= read -r repo; do
-    [ -z "$repo" ] && continue
-    dir=$(basename "$repo" .git)
-    PROGRESS_TAG="[$(printf "%02d" $COUNT)/$TOTAL_REPOS]"
+do_status() { local name="$1";
+  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
+  echo "${CYAN}Status for $name:${RESET}"
+  (cd "$name" && git status --short) || echo "${RED}Failed to show status for $name${RESET}"
+}
 
-    if [ -d "$dir/.git" ]; then
-        # UPDATE
-        (cd "$dir" && git pull --ff-only 2>&1 | grep -v "Already up to date" || true) >/dev/null &
-        PID=$!
-        spinner $PID "$dir"
-        EXIT_CODE=$?
-        
-        if [ $EXIT_CODE -eq 0 ]; then
-            printf "\r${DARK}%-20s${RESET} ${GOLD}[ UPDATED ] ${DARK}$PROGRESS_TAG${RESET}\n" "$dir"
-            UPDATED=$((UPDATED + 1))
+do_commit() { local name="$1";
+  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
+  echo "${CYAN}Enter commit message for $name:${RESET}"
+  read -r CM
+  if [ -z "$CM" ]; then echo "${YELLOW}No message provided. Skipping commit.${RESET}"; return; fi
+  (cd "$name" && git add -A && git commit -m "$CM" >/dev/null 2>&1 && git push) && echo "${GREEN}Committed & pushed in $name${RESET}" || echo "${YELLOW}Nothing to commit or push failed in $name${RESET}"
+}
+
+do_delete() { local name="$1";
+  echo "${RED}Confirm delete of ${name}? Type 'yes' to confirm:${RESET}"
+  read -r CONF
+  if [ "$CONF" = "yes" ]; then rm -rf "$name" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
+}
+
+while true; do
+  echo "${CYAN}Available repositories:${RESET}"
+  i=0
+  while IFS='|' read -r rname rurl; do
+    i=$((i + 1))
+    printf "%3d) %s\n" "$i" "$rname"
+  done < /tmp/statik_repos.txt
+
+  echo ""
+  echo "${YELLOW}Actions:${RESET} i=Install  u=Update  s=Status  c=Commit  d=Delete  a=AutoAll  q=Quit"
+  printf "Choose action: "
+  read -r ACTION
+  case "$ACTION" in
+    i|u|s|c|d)
+      printf "Enter repo numbers separated by spaces (or 'all'): "
+      read -r SEL
+      if [ "$SEL" = "all" ]; then RANGE="$(seq 1 $TOTAL_REPOS)"; else RANGE="$SEL"; fi
+      for idx in $RANGE; do
+        line=$(get_repo_line "$idx")
+        name=$(printf "%s" "$line" | cut -d'|' -f1)
+        url=$(printf "%s" "$line" | cut -d'|' -f2)
+        case "$ACTION" in
+          i) do_clone "$name" "$url" ;;
+          u) do_update "$name" ;;
+          s) do_status "$name" ;;
+          c) do_commit "$name" ;;
+          d) do_delete "$name" ;;
+        esac
+      done
+      ;;
+    a)
+      echo "${CYAN}Auto processing all repositories: clone or update${RESET}"
+      while IFS='|' read -r name url; do
+        if [ -d "$name/.git" ]; then
+          do_update "$name"
         else
-            printf "\r${DARK}%-20s${RESET} ${RED}[ FAILED  ] ${DARK}$PROGRESS_TAG${RESET}\n" "$dir"
-            FAILED=$((FAILED + 1))
+          do_clone "$name" "$url"
         fi
-    else
-        # CLONE
-        git clone "$repo" "$dir" >/dev/null 2>&1 &
-        PID=$!
-        spinner $PID "$dir"
-        EXIT_CODE=$?
-        
-        if [ $EXIT_CODE -eq 0 ]; then
-            printf "\r${B_RED}%-20s${RESET} ${GOLD}[ CLONED  ] ${DARK}$PROGRESS_TAG${RESET}\n" "$dir"
-            CLONED=$((CLONED + 1))
-        else
-            printf "\r${B_RED}%-20s${RESET} ${RED}[ FAILED  ] ${DARK}$PROGRESS_TAG${RESET}\n" "$dir"
-            FAILED=$((FAILED + 1))
-            # Clean up failed clone
-            [ -d "$dir" ] && rm -rf "$dir"
-        fi
-    fi
-    COUNT=$((COUNT + 1))
-done < <(echo "$REPO_LIST")
+      done < /tmp/statik_repos.txt
+      ;;
+    q)
+      echo "${GREEN}Exiting interactive manager.${RESET}"
+      break
+      ;;
+    *)
+      echo "${YELLOW}Unknown action: $ACTION${RESET}"
+      ;;
+  esac
+  echo ""
+done
 
-echo ""
-echo "${DARK}-----------------------------------------"
-echo "${B_RED}  SYNC COMPLETE"
-echo "${DARK}-----------------------------------------${RESET}"
-echo "${GOLD}  Cloned:  ${CLONED}${RESET}"
-echo "${GOLD}  Updated: ${UPDATED}${RESET}"
-[ $FAILED -gt 0 ] && echo "${RED}  Failed:  ${FAILED}${RESET}"
-echo "${DARK}-----------------------------------------${RESET}"
-echo ""
-echo "${GOLD}Repos located at: ${BUILD_DIR}${RESET}"
-
-# WSL-specific tip
+echo "${GREEN}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
 if [ -n "$WSL_DISTRO_NAME" ]; then
-    echo "${DARK}(Access from Windows: \\\\wsl\$\\${WSL_DISTRO_NAME}${BUILD_DIR})${RESET}"
+  echo "(Access from Windows: \\wsl\\${WSL_DISTRO_NAME}${BUILD_DIR})"
 fi
-
-sleep 2
-ZSHEOF
-
-# Make the ZSH script executable
-chmod +x /tmp/statik_sync_core.zsh
-
-# Execute Phase 2
-exec zsh /tmp/statik_sync_core.zsh
+sleep 1
