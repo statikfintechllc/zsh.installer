@@ -504,49 +504,32 @@ do_delete() {
   if [ "$CONF" = "yes" ]; then rm -rf "$name" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
 }
 
+ACTIONS_FILE="/tmp/statik_actions.txt"
+rm -f "$ACTIONS_FILE"
 count=0
+echo "${CYAN}Phase: Selection (choose action for each target). Choices will be executed after selection completes.${RESET}"
 while IFS='|' read -r rname rurl; do
   count=$((count + 1))
   printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
   printf '%b' "${BOLD}Target ${count}/${TOTAL_REPOS}:${RESET} "
   printf '%b\n' "${rname}"
 
-  if [ -d "$rname/.git" ]; then
-    printf '%b\n' "${GREEN}Status: Present${RESET}"
-  else
-    printf '%b\n' "${YELLOW}Status: Not present${RESET}"
-  fi
+  # Status shown on demand (type 's') to avoid spamming output
 
-  # Per-repo interactive prompt: allows status then user can choose action
+  # Per-repo selection prompt: record action only; allow status checks
   while true; do
-    printf '%b' "${YELLOW}Action for ${rname} [i=install u=update s=status c=commit d=delete p=pass q=quit]: ${RESET}"
+    printf '%b' "${YELLOW}Select action for ${rname} [i=install u=update s=status c=commit d=delete p=pass q=quit]: ${RESET}"
     read -r REPLY_ACTION
     case "$REPLY_ACTION" in
-      i)
-        do_clone "$rname" "$rurl"
-        break
-        ;;
-      u)
-        do_update "$rname"
+      i|u|c|d|p)
+        printf '%s|%s|%s\n' "$rname" "$rurl" "$REPLY_ACTION" >> "$ACTIONS_FILE"
         break
         ;;
       s)
         do_status "$rname"
         ;;
-      c)
-        do_commit "$rname"
-        break
-        ;;
-      d)
-        do_delete "$rname"
-        break
-        ;;
-      p)
-        printf '%b\n' "${CYAN}Skipping ${rname}${RESET}"
-        break
-        ;;
       q)
-        printf '%b\n' "${GREEN}Exiting interactive manager.${RESET}"
+        printf '%b\n' "${GREEN}Selection aborted by user.${RESET}"
         exit 0
         ;;
       *)
@@ -555,6 +538,47 @@ while IFS='|' read -r rname rurl; do
     esac
   done
 done < /tmp/statik_repos.txt
+
+# =====================================================
+# EXECUTION: PROCESS PRESET ACTIONS
+# =====================================================
+if [ ! -f "$ACTIONS_FILE" ]; then
+  echo "${YELLOW}No actions selected. Exiting.${RESET}"
+  exit 0
+fi
+
+echo "${CYAN}Phase: Execution — running selected actions...${RESET}"
+PROC_COUNT=0
+while IFS='|' read -r pname purl paction; do
+  PROC_COUNT=$((PROC_COUNT + 1))
+  printf '%b\n' "${CYAN}-----------------------------------------${RESET}"
+  printf '%b\n' "${BOLD}Processing ${PROC_COUNT}/${TOTAL_REPOS}: ${pname}${RESET}"
+  case "$paction" in
+    i)
+      do_clone "$pname" "$purl"
+      ;;
+    u)
+      do_update "$pname"
+      ;;
+    s)
+      do_status "$pname"
+      ;;
+    c)
+      do_commit "$pname"
+      ;;
+    d)
+      do_delete "$pname"
+      ;;
+    p)
+      printf '%b\n' "${CYAN}Skipped ${pname}${RESET}"
+      ;;
+    *)
+      printf '%b\n' "${YELLOW}Unknown preset action: ${paction} for ${pname}${RESET}"
+      ;;
+  esac
+done < "$ACTIONS_FILE"
+
+rm -f "$ACTIONS_FILE"
 
 echo "${GREEN}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
 if [ -n "$WSL_DISTRO_NAME" ]; then
