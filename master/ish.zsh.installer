@@ -70,12 +70,22 @@ check_existing_setup() {
 
   if [ "$SETUP_EXISTS" = true ]; then
     echo ""
-    echo "${CYAN}${BOLD}==== UPDATE MODE ACTIVATED ====${RESET}"
-    echo "${CYAN}Detected existing setup. Skipping installation steps.${RESET}"
-    echo "${CYAN}Will proceed directly to repo sync...${RESET}"
-    echo ""
-    sleep 2
-    SKIP_INSTALL=true
+    # If zsh is present, treat as update mode; otherwise attempt repair by reinstalling missing components
+    if command -v zsh >/dev/null 2>&1; then
+      echo "${CYAN}${BOLD}==== UPDATE MODE ACTIVATED ====${RESET}"
+      echo "${CYAN}Detected existing setup. Skipping installation steps.${RESET}"
+      echo "${CYAN}Will proceed directly to repo sync...${RESET}"
+      echo ""
+      sleep 2
+      SKIP_INSTALL=true
+    else
+      echo "${CYAN}${BOLD}==== PARTIAL SETUP DETECTED ====${RESET}"
+      echo "${YELLOW}Detected existing configuration files but Zsh is missing.${RESET}"
+      echo "${CYAN}Attempting to repair and install missing components...${RESET}"
+      echo ""
+      sleep 2
+      SKIP_INSTALL=false
+    fi
   else
     echo "${CYAN}${BOLD}==== INSTALL MODE ACTIVATED ====${RESET}"
     echo "${CYAN}Fresh installation detected.${RESET}"
@@ -254,13 +264,17 @@ if [ "$SKIP_INSTALL" = false ]; then
   
   # Verify zsh is installed before handoff
   if ! command -v zsh >/dev/null 2>&1; then
-    echo "${RED}Error: Zsh not found. Cannot proceed.${RESET}"
+    echo "${RED}Error: Zsh not found after installation steps. Repair attempt failed.${RESET}"
+    echo "${YELLOW}Tip: Try installing zsh manually (e.g., 'sudo apt-get install zsh' or use your distro's package manager), then re-run this installer.${RESET}"
+    echo "${CYAN}If problems persist, inspect /tmp/installer.log for details.${RESET}"
     exit 1
   fi
 else
   # In update mode, just verify zsh exists
   if ! command -v zsh >/dev/null 2>&1; then
-    echo "${RED}Error: Zsh not found but .zshrc exists. Corrupted installation?${RESET}"
+    echo "${RED}Error: Zsh not found but .zshrc exists. Possible corrupted installation.${RESET}"
+    echo "${YELLOW}Tip: Re-run the installer to attempt repair (this will try to reinstall missing components).${RESET}"
+    echo "${CYAN}If you prefer manual repair, install zsh and then re-run this script.${RESET}"
     exit 1
   fi
   echo "${GREEN}>> Skipping to repository sync...${RESET}"
