@@ -255,8 +255,15 @@ setup_zsh_default() {
 # =====================================================
 # EXECUTION: PHASE 1 (INSTALLATION)
 # =====================================================
+# Detect OS early so we can decide whether to blackout and skip zsh checks
+detect_os
 clear
-start_blackout
+# Blackout only for iSH (alpine) and when not running under WSL
+if [ "${OS}" = "alpine" ] && [ "${WSL}" != true ]; then
+  if command -v start_blackout >/dev/null 2>&1; then
+    start_blackout
+  fi
+fi
 check_existing_setup
 
 # Determine if we should skip zsh-specific steps (Windows/WSL)
@@ -284,8 +291,9 @@ else
   # In update mode
   if [ "$SKIP_ZSH_INSTALL" = false ]; then
     if ! command -v zsh >/dev/null 2>&1; then
-      echo "${RED}Error: Zsh not found but .zshrc exists. Corrupted installation?${RESET}"
-      exit 1
+      echo "${YELLOW}Warning: Zsh not found but .zshrc exists. Proceeding to repo sync (skipping zsh verification).${RESET}"
+      # Avoid blocking update; skip zsh verification
+      SKIP_ZSH_INSTALL=true
     fi
   else
     echo "${YELLOW}>> Running in Windows/WSL update mode: skipping zsh verification${RESET}"
@@ -470,39 +478,128 @@ get_repo_line() { sed -n "${1}p" /tmp/statik_repos.txt; }
 
 do_clone() {
   name="$1"; url="$2"
-  if [ -d "$name/.git" ]; then echo "${YELLOW}>> $name already exists. Skipping clone.${RESET}"; return; fi
-  echo "${CYAN}Cloning $name...${RESET}"
-  if git clone "$url" "$name" >/dev/null 2>&1; then echo "${GREEN}Cloned $name${RESET}"; else echo "${RED}Failed to clone $name${RESET}"; fi
-}
+  target="$BUILD_DIR/$name"
+  if [ -d "$target/.git" ]; then echo "${YELLOW}>> $name already exists. Skipping clone.${RESET}"; return; fi
+  echo "${CYAN}Cloning $name into ${target}...${RESET}"
+
+  # Helper to log git failures
+  log_file="/tmp/git_clone_${name}.log"
+  rm -f "$log_file"
+
+  # If running in iSH (Alpine and not WSL), prefer shallow clone to reduce memory
+  if [ "${OS}" = "alpine" ] && [ "${WSL}" != true ]; then
+    if git clone --depth=1 "$url" "$target" >"$log_file" 2>&1; then
+      echo "${GREEN}Shallow cloned $name${RESET}"
+      return 0
+    else
+      echo "${YELLOW}Shallow clone failed; attempting full clone (may fail on iSH). See $log_file for details.${RESET}"
+      git --version >>"$log_file" 2>&1 || true
+      if git clone "$url" "$target" >"$log_file" 2>&1; then
+        echo "${GREEN}Cloned $name (full clone success)${RESET}"
+        return 0
+      else
+        echo "${RED}Failed to clone $name. See $log_file for details.${RESET}"
+        return 1
+      fi
+    fi
+  else
+    # Normal systems: full clone
+    if git clone "$url" "$target" >"$log_file" 2>&1; then
+      echo "${GREEN}Cloned $name${RESET}"
+      return 0
+    else
+      echo "${RED}Failed to clone $name. See $log_file for details.${RESET}"
+      return 1
+    fi
+  fi
+} 
 
 do_update() {
   name="$1"
-  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present. Use install first.${RESET}"; return; fi
+  target="$BUILD_DIR/$name"
+  log_file="/tmp/git_update_${name}.log"
+  rm -f "$log_file"
+
+  if [ ! -d "$target/.git" ]; then echo "${YELLOW}>> $name is not present. Use install first.${RESET}"; return 1; fi
+
   echo "${CYAN}Updating $name...${RESET}"
-  (cd "$name" && git pull --ff-only) >/dev/null 2>&1 && echo "${GREEN}Updated $name${RESET}" || echo "${YELLOW}No changes or update failed for $name${RESET}"
-}
+  # Capture git version and environment for debugging
+  git --version >"$log_file" 2>&1 || true
+  echo "--- fetch output ---" >>"$log_file"
+
+  # If on iSH, prefer shallow fetch then hard reset to origin/branch to reduce memory
+  if [ "${OS}" = "alpine" ] && [ "${WSL}" != true ]; then
+    branch=$(cd "$target" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)
+    if (cd "$target" && git fetch --depth=1 origin >"$log_file" 2>&1); then
+      if (cd "$target" && git reset --hard origin/"$branch" >"$log_file" 2>&1); then
+        echo "${GREEN}Updated $name (shallow)${RESET}"
+        return 0
+      else
+        echo "${YELLOW}Fetch succeeded but reset failed for $name; see $log_file${RESET}"
+      fi
+    else
+      echo "${RED}Shallow fetch failed for $name; see $log_file${RESET}"
+    fi
+
+    # Offer to re-clone shallow if fetch/reset failed
+    printf '%b' "${YELLOW}Update failed for $name. Attempt fresh shallow clone (this will remove local copy)? (y/n): ${RESET}"
+    read -r RECLONE < /dev/tty
+    if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+      rm -rf "$target" && echo "Removed local copy of $name"
+      do_clone "$name" "$2"
+      return $?
+    else
+      echo "${YELLOW}Skipping re-clone for $name.${RESET}"
+      return 1
+    fi
+  else
+    # Non-iSH / normal systems: attempt fast pull
+    if (cd "$target" && git pull --ff-only >"$log_file" 2>&1); then
+      echo "${GREEN}Updated $name${RESET}"
+      return 0
+    else
+      echo "${RED}Update failed for $name. See $log_file for details.${RESET}"
+      printf '%b' "${YELLOW}Attempt fresh clone to recover? (y/n): ${RESET}"
+      read -r RECLONE < /dev/tty
+      if printf '%s' "$RECLONE" | grep -qi '^y' >/dev/null 2>&1; then
+        rm -rf "$target" && echo "Removed local copy of $name"
+        do_clone "$name" "$2"
+        return $?
+      else
+        echo "${YELLOW}Skipping re-clone for $name.${RESET}"
+        return 1
+      fi
+    fi
+  fi
+} 
 
 do_status() {
   name="$1"
-  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
+  target="$BUILD_DIR/$name"
+  if [ ! -d "$target/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
   echo "${CYAN}Status for $name:${RESET}"
-  (cd "$name" && git status --short) || echo "${RED}Failed to show status for $name${RESET}"
+  if ! (cd "$target" && git status --short); then
+    echo "${RED}Failed to show status for $name (see /tmp/git_status_${name}.log)${RESET}"
+    (cd "$target" && git --version) >"/tmp/git_status_${name}.log" 2>&1 || true
+  fi
 }
 
 do_commit() {
   name="$1"
-  if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
+  target="$BUILD_DIR/$name"
+  if [ ! -d "$target/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
   echo "${CYAN}Enter commit message for $name:${RESET}"
   read -r CM < /dev/tty
   if [ -z "$CM" ]; then echo "${YELLOW}No message provided. Skipping commit.${RESET}"; return; fi
-  (cd "$name" && git add -A && git commit -m "$CM" >/dev/null 2>&1 && git push) && echo "${GREEN}Committed & pushed in $name${RESET}" || echo "${YELLOW}Nothing to commit or push failed in $name${RESET}"
-}
+  (cd "$target" && git add -A && git commit -m "$CM" >/dev/null 2>&1 && git push) && echo "${GREEN}Committed & pushed in $name${RESET}" || echo "${YELLOW}Nothing to commit or push failed in $name${RESET}"
+} 
 
 do_delete() {
   name="$1"
+  target="$BUILD_DIR/$name"
   echo "${RED}Confirm delete of ${name}? Type 'yes' to confirm:${RESET}"
   read -r CONF < /dev/tty
-  if [ "$CONF" = "yes" ]; then rm -rf "$name" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
+  if [ "$CONF" = "yes" ]; then rm -rf "$target" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
 }
 
 # Hand off to zsh if available, otherwise keep sh selection/execution (TTY-safe)
@@ -643,7 +740,7 @@ else
     printf '%b\n' "${BOLD}Processing ${PROC_COUNT}/${TOTAL_REPOS}: ${pname}${RESET}"
     case "$paction" in
       i) do_clone "$pname" "$purl" ;;
-      u) do_update "$pname" ;;
+      u) do_update "$pname" "$purl" ;;
       s) do_status "$pname" ;;
       c) do_commit "$pname" ;;
       d) do_delete "$pname" ;;

@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+# Simulate selecting 'u' (update) for the first repo and declining a reclone if update fails
+set timeout 120
+spawn env PATH=/nada:$env(PATH) sh ./master/ish.zsh.installer
+expect {
+  -re "Use existing configuration\? \(y/n\):" {
+    send "y\r"
+    exp_continue
+  }
+  -re "Select action for .*:\s*$" {
+    # Select update for first repo
+    send "u\r"
+    exp_continue
+  }
+  -re "Attempt fresh shallow clone.*\(y/n\):" {
+    # Decline reclone to avoid lengthy operations in CI
+    send "n\r"
+    exp_continue
+  }
+  -re "Phase: Execution" {
+    send_user "Execution phase reached\n"
+  }
+  timeout {
+    send_user "Test timed out waiting for expected prompts\n"
+    exit 2
+  }
+}
+expect eof
+exit 0
