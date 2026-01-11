@@ -5,14 +5,8 @@ An automated installer script for setting up Zsh with Oh-My-Zsh on iSH (iOS Shel
 ## Installation
 
 Run the following command in your iSH terminal:
-
 ```shell
-# Using curl
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/ish.zsh.installer)"
-```
-```shell
-# Using wget
-sh -c "$(wget -qO- https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/ish.zsh.installer)"
 ```
 
 ## Overview
