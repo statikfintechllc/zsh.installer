@@ -118,6 +118,10 @@ git push  # No password prompt!
 
 ⚠️ **Credential Storage**: This script uses `credential.helper store` which stores credentials in **plain text** in `~/.git-credentials`. For enhanced security, consider using a personal access token instead of your password.
 
+**Alternative credential helpers:**
+- `git config --global credential.helper cache` - Stores credentials in memory for 15 minutes (more secure, but temporary)
+- `git config --global credential.helper 'cache --timeout=3600'` - Cache for 1 hour
+
 To create a GitHub personal access token:
 1. Go to GitHub Settings → Developer settings → Personal access tokens
 2. Generate new token with appropriate permissions
