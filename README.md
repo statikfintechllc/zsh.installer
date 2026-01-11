@@ -19,7 +19,7 @@ This script automates the complete setup of Zsh on iSH for mobile development, i
 
 ## Visual Gallery 🖼️
 
-A quick visual guide to the installer's UI and progress. Click any thumbnail to jump to a larger view with descriptions. For a richer interactive experience (carousel, keyboard navigation, and big-square viewer), open the interactive gallery in your browser: `zsh.installer/gallery.html` (serve the repo locally with `python -m http.server` and visit `http://localhost:8000/zsh.installer/gallery.html`).
+A quick visual guide to the installer's UI and progress. Click any thumbnail to jump to a larger view with descriptions. For a richer interactive experience (carousel, keyboard navigation, and big-square viewer), open the interactive gallery in your browser: `zsh.installer/gallery.html` (serve the repo locally with `python -m http.server` and visit `http://localhost:8000/zsh.installer/gallery.html`). For a terminal-style mirror of the installer (glass cards, a live demo, and smooth pop-ups), open the interactive docs at `zsh.installer/docs/index.html`.
 
 <div id="gallery" align="center">
 <table>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>zsh.installer — Interactive Docs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>zsh.installer — Interactive Docs</h1>
+      <p class="tagline">A terminal-style mirror of the installer's flow with glass cards, live demo, and how‑tos.</p>
+      <div class="header-actions">
+        <a class="btn ghost" href="../README.md">README</a>
+        <a class="btn accent" href="../gallery.html">Open Gallery</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap main-grid">
+    <section class="demo">
+      <div class="term-card glass">
+        <div class="term-top">
+          <div class="circles"><span class="c red"></span><span class="c amber"></span><span class="c green"></span></div>
+          <div class="term-title">iSH — zsh.installer (demo)</div>
+        </div>
+
+        <div class="terminal" id="terminal" aria-live="polite">
+          <div id="terminalContent" class="terminal-content"></div>
+          <div class="cursor" id="cursor">█</div>
+        </div>
+
+        <div class="term-controls">
+          <button id="runDemo" class="btn accent">Run demo</button>
+          <button id="replay" class="btn">Replay</button>
+          <button id="clear" class="btn">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side-cards">
+      <div class="card glass">
+        <h3>Quick Start</h3>
+        <p class="muted">Copy the one-line installer and run it in iSH:</p>
+        <pre class="cmd">sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/master/ish.zsh.installer)"</pre>
+        <div class="card-actions">
+          <button class="btn copy" data-clipboard='sh -c "$(curl -fsSL https://raw.githubusercontent.com/statikfintechllc/zsh.installer/master/master/ish.zsh.installer)"'>Copy</button>
+          <a class="btn ghost" href="../README.md">View README</a>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <h3>Customize</h3>
+        <p class="muted">Change theme or add plugins in <code>~/.zshrc</code>.</p>
+        <pre class="cmd">nano ~/.zshrc</pre>
+        <div class="card-actions">
+          <button class="btn copy" data-clipboard="nano ~/.zshrc">Copy</button>
+          <button class="btn ghost" data-modal="customize">More</button>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <h3>Git Credentials</h3>
+        <p class="muted">We configure <code>credential.helper store</code> by default (plain-text file).</p>
+        <pre class="cmd">git config --global credential.helper store</pre>
+        <div class="card-actions">
+          <button class="btn copy" data-clipboard="git config --global credential.helper store">Copy</button>
+          <button class="btn ghost" data-modal="credentials">More</button>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <section class="gallery wrap">
+    <h2>Installer Gallery</h2>
+    <div class="grid thumbs">
+      <div class="thumb" data-index="0" data-src="../example.img/Phase_1.jpeg"><img src="../example.img/Phase_1.jpeg" alt="Phase 1"/><div class="title">Phase 1</div><div class="desc">Installer start & initial prompts</div></div>
+      <div class="thumb" data-index="1" data-src="../example.img/Phase_2.jpeg"><img src="../example.img/Phase_2.jpeg" alt="Phase 2"/><div class="title">Phase 2</div><div class="desc">Progress indicators & configuration</div></div>
+      <div class="thumb" data-index="2" data-src="../example.img/Phase_3.jpeg"><img src="../example.img/Phase_3.jpeg" alt="Phase 3"/><div class="title">Phase 3</div><div class="desc">Completion & success message</div></div>
+    </div>
+  </section>
+
+  <!-- modal for images -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <button class="modal-close" aria-label="Close">✕</button>
+    <button class="modal-nav prev" aria-label="Previous">‹</button>
+    <figure class="modal-content"><img id="modalImage" src="" alt=""><figcaption id="modalCaption"></figcaption></figure>
+    <button class="modal-nav next" aria-label="Next">›</button>
+  </div>
+
+  <footer class="wrap site-footer">
+    <div class="small muted">To preview locally: run <code>python -m http.server</code> from the repo root and open <code>http://localhost:8000/zsh.installer/docs/index.html</code></div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
