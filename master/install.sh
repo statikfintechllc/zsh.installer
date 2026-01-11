@@ -57,7 +57,7 @@ progress 0.5
 print_box "Step 3" "Configuring Git credential storage..."
 git config --global credential.helper store
 echo "${YELLOW}⚠ Enter Git credentials once when prompted:${RESET}"
-git ls-remote https://github.com/git/git.git 2>/dev/null || true
+git ls-remote https://github.com/statikfintechllc/zsh.installer.git 2>/dev/null || true
 progress 1
 
 # -------- Step 4: Final UI --------
