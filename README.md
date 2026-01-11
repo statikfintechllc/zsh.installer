@@ -112,7 +112,14 @@ git push  # No password prompt!
 - Ensure the script has execute permissions: `chmod +x install.sh`
 - Check file ownership: `ls -la`
 
+### Progress Bar Not Displaying
+- The script requires `bc` for the progress animation
+- If you see errors about `bc`, install it manually: `apk add bc`
+- The installation will still complete successfully even if progress bars fail
+
 ## Security Notes
+
+⚠️ **Remote Script Execution**: This installer downloads and executes scripts from the internet (including Oh-My-Zsh installation). Always review scripts before running them with `sh -c "$(curl ..."` commands.
 
 ⚠️ **Credential Storage**: This script uses `credential.helper store` which stores credentials in **plain text** in `~/.git-credentials`. For enhanced security, consider using a personal access token instead of your password.
 
