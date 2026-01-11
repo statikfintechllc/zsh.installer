@@ -85,7 +85,10 @@ echo ""
 
 # Store credentials in ~/.git-credentials file
 if [ -n "$GH_USERNAME" ] && [ -n "$GH_TOKEN" ]; then
-  echo "https://${GH_USERNAME}:${GH_TOKEN}@github.com" > ~/.git-credentials
+  # URL encode the credentials (basic validation and encoding for special chars)
+  GH_USERNAME_ENC=$(printf '%s' "$GH_USERNAME" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g')
+  GH_TOKEN_ENC=$(printf '%s' "$GH_TOKEN" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g')
+  echo "https://${GH_USERNAME_ENC}:${GH_TOKEN_ENC}@github.com" > ~/.git-credentials
   chmod 600 ~/.git-credentials
   echo "${GREEN}✓ Credentials saved successfully${RESET}"
 else
