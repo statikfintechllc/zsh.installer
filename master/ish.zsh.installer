@@ -2,16 +2,13 @@
 
 # =====================================================
 
-# STATIKFINTECHLLC // MASTER_BOOTSTRAP (CORRECTED)
-
+# STATIKFINTECHLLC // MASTER_BOOTSTRAP
 # Phase 1: Environment Setup (sh/cyan)
-
 # Phase 2: Credentials & Sync (zsh/red)
 
 # =====================================================
 
 # — PHASE 1 COLORS (Cyan Theme) —
-
 CYAN=’\033[36m’
 GREEN=’\033[32m’
 RED=’\033[0;31m’
@@ -19,7 +16,6 @@ BOLD=’\033[1m’
 RESET=’\033[0m’
 
 # — PHASE 1 FUNCTIONS —
-
 print_box() {
 echo “${CYAN}┌─────────────────────────────────────────┐${RESET}”
 echo “${CYAN}│${BOLD} $1${RESET}${CYAN} │${RESET}”
@@ -37,7 +33,6 @@ sleep 0.2
 echo -ne “\r   [#######………….] (35%)”
 
 # Use simple sleep division instead of bc
-
 half=$(awk “BEGIN {printf "%.2f", $secs/2}”)
 sleep “$half”
 echo -ne “\r   [##############……] (70%)”
@@ -55,7 +50,6 @@ clear
 print_box “Step 1/3” “Installing System Dependencies…”
 
 # Ensure we have jq, zsh, git, and awk for math
-
 apk update >/dev/null 2>&1 || {
 echo “${RED}Error: Failed to update package index${RESET}”
 exit 1
@@ -81,14 +75,12 @@ progress 1
 print_box “Step 3/3” “Setting Zsh as Default…”
 
 # This ensures iSH loads ZSH on next boot
-
 if ! grep -q “exec zsh” ~/.profile 2>/dev/null; then
 echo ‘[ -z “$ZSH_VERSION” ] && exec zsh’ >> ~/.profile
 fi
 progress 0.5
 
 # Verify zsh is installed before handoff
-
 if ! command -v zsh >/dev/null 2>&1; then
 echo “${RED}Error: Zsh not found. Cannot proceed.${RESET}”
 exit 1
@@ -104,7 +96,6 @@ cat << ‘EOF’ > /tmp/statik_sync_core.zsh
 #!/bin/zsh
 
 # — PHASE 2 COLORS (Red Theme) —
-
 RED=’\033[0;31m’
 B_RED=’\033[1;31m’
 DARK=’\033[2;31m’
@@ -114,7 +105,6 @@ RESET=’\033[0m’
 clear
 
 # Digital Rain Header
-
 echo “${DARK}”
 cat << “HEADER”
 
@@ -127,25 +117,21 @@ HEADER
 echo “${RESET}”
 
 # — GIT CONFIGURATION UI —
-
 echo “${B_RED}>> INITIALIZING CREDENTIAL PROTOCOL…${RESET}”
 echo “”
 echo “${DARK}Please enter GitHub Identity for Global Config:${RESET}”
 
 # 1. Username
-
 printf “${B_RED}GitHub Username:${RESET} “
 read GH_USER
 
 # Basic validation
-
 if [ -z “$GH_USER” ]; then
 echo “${RED}Error: Username cannot be empty${RESET}”
 exit 1
 fi
 
 # 2. Email (Crucial for commits)
-
 printf “${B_RED}GitHub Email:   ${RESET} “
 read GH_EMAIL
 
@@ -155,7 +141,6 @@ exit 1
 fi
 
 # 3. Token
-
 printf “${B_RED}GitHub Token:   ${RESET} “
 read -s GH_TOKEN
 echo “”
@@ -167,11 +152,9 @@ sleep 2
 fi
 
 # — APPLYING GIT CONFIG —
-
 echo “${DARK}>> WRITING CONFIGURATION…${RESET}”
 
 # Set Global Name/Email
-
 git config –global user.name “$GH_USER” || {
 echo “${RED}Error: Failed to set git username${RESET}”
 exit 1
@@ -183,11 +166,9 @@ exit 1
 }
 
 # Set Credential Helper (Store allows permanent login)
-
 git config –global credential.helper store
 
 # Create credentials file properly with URL encoding
-
 if [ -n “$GH_USER” ] && [ -n “$GH_TOKEN” ]; then
 # Proper URL encoding function
 urlencode() {
@@ -217,7 +198,6 @@ sleep 1
 # =====================================================
 
 # Spinner Function with better process handling
-
 spinner() {
 local pid=$1
 local msg=$2
@@ -242,7 +222,6 @@ return $?
 printf “\n${B_RED}>> ENGAGING REPO SYNC ENGINE…${RESET}\n”
 
 # Create builds directory if it doesn’t exist and enter it
-
 if [ ! -d “builds” ]; then
 mkdir -p builds || {
 echo “${RED}Error: Cannot create builds directory${RESET}”
@@ -256,7 +235,6 @@ exit 1
 }
 
 # Use the token for the API call (Avoids API limits)
-
 if [ -n “$GH_TOKEN” ]; then
 AUTH_HEADER=“Authorization: token $GH_TOKEN”
 else
@@ -277,12 +255,10 @@ exit 1
 fi
 
 # Get repo list and filter empty lines
-
 REPO_LIST=$(echo “$JSON_DATA” | jq -r ‘.[].clone_url’ | grep -v ‘^$’)
 TOTAL_REPOS=$(echo “$REPO_LIST” | wc -l | tr -d ’ ’)
 
 # Handle case of no repos
-
 if [ “$TOTAL_REPOS” -eq 0 ] || [ -z “$REPO_LIST” ]; then
 echo “${GOLD}>> NO REPOSITORIES FOUND${RESET}”
 exit 0
@@ -291,7 +267,6 @@ fi
 printf “\r${GOLD}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n”
 
 # FIX: Use process substitution to avoid subshell and maintain COUNT
-
 COUNT=1
 while IFS= read -r repo; do
 [ -z “$repo” ] && continue
