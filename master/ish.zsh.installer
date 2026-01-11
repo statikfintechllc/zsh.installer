@@ -371,7 +371,7 @@ cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory${RESET}";
 
 # Extract token from credentials if not provided
 if [ -z "$GH_TOKEN" ] && [ -f "$HOME/.git-credentials" ]; then
-  GH_TOKEN=$(grep 'github.com' "$HOME/.git-credentials" | sed -E 's@.*:([^@]+)@.*@\1@' | head -n1 2>/dev/null || true)
+  GH_TOKEN=$(sed -n 's|.*https://[^:]*:\([^@]*\)@github.com.*|\1|p' "$HOME/.git-credentials" | head -n1 2>/dev/null || true)
 fi
 
 if [ -n "$GH_TOKEN" ]; then
@@ -384,40 +384,109 @@ API_USER="${GH_USER:-$EXISTING_USER}"
 if [ -z "$API_USER" ]; then echo "${RED}Error: No GitHub username available${RESET}"; exit 1; fi
 
 JSON_DATA=$(curl -s -H "$AUTH_HEADER" "https://api.github.com/users/$API_USER/repos?per_page=200")
-IS_VALID=$(echo "$JSON_DATA" | jq -r 'if type=="array" then "yes" else "no" end' 2>/dev/null)
-if [ "$IS_VALID" != "yes" ]; then
-  echo "${RED}[ ERROR ] Unable to fetch repos. Check Token or API Status.${RESET}"
-  ERROR_MSG=$(echo "$JSON_DATA" | jq -r '.message // "Unknown error"' 2>/dev/null)
-  echo "API Response: $ERROR_MSG"
-  exit 1
+
+# Ensure jq is available or prompt to install; otherwise fall back to simple parsing
+USE_JQ=true
+if ! command -v jq >/dev/null 2>&1; then
+  printf "${YELLOW}Note: 'jq' is required to parse GitHub JSON efficiently and was not found. Install now? (y/n): ${RESET}"
+  read -r INSTALL_JQ
+  if printf '%s' "$INSTALL_JQ" | grep -qi '^y' >/dev/null 2>&1; then
+    case $OS in
+      alpine)
+        apk update >/dev/null 2>&1 || true
+        if ! apk add --no-cache jq >/dev/null 2>&1; then
+          echo "${RED}Failed to install jq${RESET}"
+          USE_JQ=false
+        fi
+        ;;
+      ubuntu|debian)
+        if command -v sudo >/dev/null 2>&1; then
+          sudo apt-get update -qq >/dev/null 2>&1 || true
+          sudo apt-get install -qq -y jq >/dev/null 2>&1 || { echo "${RED}Failed to install jq${RESET}"; USE_JQ=false; }
+        else
+          echo "${RED}Cannot install jq without sudo. Please install jq and rerun.${RESET}"
+          USE_JQ=false
+        fi
+        ;;
+      macos)
+        if command -v brew >/dev/null 2>&1; then
+          brew install jq >/dev/null 2>&1 || { echo "${RED}Failed to install jq${RESET}"; USE_JQ=false; }
+        else
+          echo "${RED}Homebrew not found. Cannot install jq automatically.${RESET}"
+          USE_JQ=false
+        fi
+        ;;
+      *)
+        echo "${YELLOW}Automatic jq installation is not supported on this OS.${RESET}"
+        USE_JQ=false
+        ;;
+    esac
+  else
+    echo "${YELLOW}Proceeding without jq; will attempt fallback parsing.${RESET}"
+    USE_JQ=false
+  fi
 fi
 
-echo "$JSON_DATA" | jq -r '.[] | "\(.name)|\(.clone_url)"' > /tmp/statik_repos.txt
-TOTAL_REPOS=$(wc -l < /tmp/statik_repos.txt | tr -d ' ')
-if [ "${TOTAL_REPOS:-0}" -eq 0 ]; then echo "${YELLOW}>> NO REPOSITORIES FOUND${RESET}"; exit 0; fi
-printf "\r${YELLOW}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n"
+if [ "$USE_JQ" = true ]; then
+  IS_VALID=$(echo "$JSON_DATA" | jq -r 'if type=="array" then "yes" else "no" end' 2>/dev/null)
+  if [ "$IS_VALID" != "yes" ]; then
+    echo "${RED}[ ERROR ] Unable to fetch repos. Check Token or API Status.${RESET}"
+    ERROR_MSG=$(echo "$JSON_DATA" | jq -r '.message // "Unknown error"' 2>/dev/null)
+    echo "API Response: $ERROR_MSG"
+    exit 1
+  fi
+  echo "$JSON_DATA" | jq -r '.[] | "\(.name)|\(.clone_url)"' > /tmp/statik_repos.txt
+  TOTAL_REPOS=$(wc -l < /tmp/statik_repos.txt | tr -d ' ')
+  if [ "${TOTAL_REPOS:-0}" -eq 0 ]; then echo "${YELLOW}>> NO REPOSITORIES FOUND${RESET}"; exit 0; fi
+  printf "\r${YELLOW}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n"
+else
+  # Fallback parsing without jq (best-effort)
+  rm -f /tmp/statik_repos.txt
+  name=""
+  url=""
+  echo "$JSON_DATA" | tr ',' '\n' | while IFS= read -r line; do
+    if printf "%s" "$line" | grep -q '"name"'; then
+      name=$(printf "%s" "$line" | sed -n 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/p')
+    fi
+    if printf "%s" "$line" | grep -q '"clone_url"'; then
+      url=$(printf "%s" "$line" | sed -n 's/.*"clone_url":[[:space:]]*"\([^"]*\)".*/\1/p')
+    fi
+    if [ -n "$name" ] && [ -n "$url" ]; then
+      printf "%s|%s\n" "$name" "$url" >> /tmp/statik_repos.txt
+      name=""
+      url=""
+    fi
+  done
+  TOTAL_REPOS=$(wc -l < /tmp/statik_repos.txt | tr -d ' ')
+  if [ "${TOTAL_REPOS:-0}" -eq 0 ]; then echo "${YELLOW}>> NO REPOSITORIES FOUND (fallback parsing)${RESET}"; exit 0; fi
+  printf "\r${YELLOW}>> TARGETS ACQUIRED: ${TOTAL_REPOS}      ${RESET}\n\n"
+fi
 
 get_repo_line() { sed -n "${1}p" /tmp/statik_repos.txt; }
 
-do_clone() { local name="$1"; local url="$2";
+do_clone() {
+  name="$1"; url="$2"
   if [ -d "$name/.git" ]; then echo "${YELLOW}>> $name already exists. Skipping clone.${RESET}"; return; fi
   echo "${CYAN}Cloning $name...${RESET}"
   if git clone "$url" "$name" >/dev/null 2>&1; then echo "${GREEN}Cloned $name${RESET}"; else echo "${RED}Failed to clone $name${RESET}"; fi
 }
 
-do_update() { local name="$1";
+do_update() {
+  name="$1"
   if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present. Use install first.${RESET}"; return; fi
   echo "${CYAN}Updating $name...${RESET}"
   (cd "$name" && git pull --ff-only) >/dev/null 2>&1 && echo "${GREEN}Updated $name${RESET}" || echo "${YELLOW}No changes or update failed for $name${RESET}"
 }
 
-do_status() { local name="$1";
+do_status() {
+  name="$1"
   if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
   echo "${CYAN}Status for $name:${RESET}"
   (cd "$name" && git status --short) || echo "${RED}Failed to show status for $name${RESET}"
 }
 
-do_commit() { local name="$1";
+do_commit() {
+  name="$1"
   if [ ! -d "$name/.git" ]; then echo "${YELLOW}>> $name is not present.${RESET}"; return; fi
   echo "${CYAN}Enter commit message for $name:${RESET}"
   read -r CM
@@ -425,7 +494,8 @@ do_commit() { local name="$1";
   (cd "$name" && git add -A && git commit -m "$CM" >/dev/null 2>&1 && git push) && echo "${GREEN}Committed & pushed in $name${RESET}" || echo "${YELLOW}Nothing to commit or push failed in $name${RESET}"
 }
 
-do_delete() { local name="$1";
+do_delete() {
+  name="$1"
   echo "${RED}Confirm delete of ${name}? Type 'yes' to confirm:${RESET}"
   read -r CONF
   if [ "$CONF" = "yes" ]; then rm -rf "$name" && echo "${GREEN}Deleted $name${RESET}" || echo "${RED}Failed to delete $name${RESET}"; else echo "${YELLOW}Aborted delete of $name${RESET}"; fi
@@ -447,7 +517,15 @@ while true; do
     i|u|s|c|d)
       printf "Enter repo numbers separated by spaces (or 'all'): "
       read -r SEL
-      if [ "$SEL" = "all" ]; then RANGE="$(seq 1 $TOTAL_REPOS)"; else RANGE="$SEL"; fi
+      if [ "$SEL" = "all" ]; then
+        if command -v seq >/dev/null 2>&1; then
+          RANGE="$(seq 1 $TOTAL_REPOS)"
+        else
+          RANGE="$(awk -v n="$TOTAL_REPOS" 'BEGIN{for(i=1;i<=n;i++){printf i" "}}')"
+        fi
+      else
+        RANGE="$SEL"
+      fi
       for idx in $RANGE; do
         line=$(get_repo_line "$idx")
         name=$(printf "%s" "$line" | cut -d'|' -f1)
