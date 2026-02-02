@@ -424,15 +424,41 @@ if [ "$SKIP_GIT_CONFIG" = false ]; then
 fi
 
 
-# Determine builds directory: $PWD/builds, then ../builds, else create $PWD/builds (never prompt)
-if [ -d "$PWD/builds" ]; then
-  BUILD_DIR="$PWD/builds"
-elif [ -d "$(dirname "$PWD")/builds" ]; then
-  BUILD_DIR="$(dirname "$PWD")/builds"
-else
+
+
+# Search up to 3 levels up and 3 levels down for the first 'builds' directory
+BUILD_DIR=""
+SEARCHED_BUILDS=()
+
+# 1. Search up to 3 levels up
+SEARCH_DIR="$PWD"
+for i in 0 1 2 3; do
+  if [ -d "$SEARCH_DIR/builds" ]; then
+    BUILD_DIR="$SEARCH_DIR/builds"
+    SEARCHED_BUILDS+=("$BUILD_DIR")
+    break
+  fi
+  SEARCH_DIR="$(dirname "$SEARCH_DIR")"
+done
+
+# 2. If not found, search up to 3 levels down from $PWD
+if [ -z "$BUILD_DIR" ]; then
+  # Use find, but limit depth to 3
+  DOWN_BUILDS=$(find "$PWD" -maxdepth 3 -type d -name builds 2>/dev/null | head -n 1)
+  if [ -n "$DOWN_BUILDS" ]; then
+    BUILD_DIR="$DOWN_BUILDS"
+    SEARCHED_BUILDS+=("$BUILD_DIR")
+  fi
+fi
+
+# 3. If still not found, create in $PWD
+if [ -z "$BUILD_DIR" ]; then
   BUILD_DIR="$PWD/builds"
   mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory ${BUILD_DIR}${RESET}"; exit 1; }
+  SEARCHED_BUILDS+=("$BUILD_DIR")
 fi
+
+# Show which builds dir is being used at the top of the menu
 echo "${CYAN}>> Using build directory: ${BUILD_DIR}${RESET}"
 cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory ${BUILD_DIR}${RESET}"; exit 1; }
 
