@@ -44,10 +44,15 @@ detect_os() {
   fi
 }
 
-# --- CHECK IF ALREADY INSTALLED ---
 check_existing_setup() {
   SETUP_EXISTS=false
   SKIP_INSTALL=false
+
+  # Create builds directory if not exists
+  if [ ! -d "$HOME/builds" ]; then
+    mkdir -p "$HOME/builds"
+    echo "${GREEN}>> Created ~/builds directory${RESET}"
+  fi
 
   # Check for .zshrc (indicates Oh-My-Zsh is configured)
   if [ -f "$HOME/.zshrc" ]; then
@@ -89,6 +94,27 @@ check_existing_setup() {
   else
     echo "${CYAN}${BOLD}==== INSTALL MODE ACTIVATED ====${RESET}"
     echo "${CYAN}Fresh installation detected.${RESET}"
+    # Always install zsh, curl, git for Ubuntu/iSH
+    echo "${CYAN}Ensuring zsh, curl, git are installed...${RESET}"
+    if command -v apt >/dev/null 2>&1; then
+      sudo apt update && sudo apt install -y zsh curl git
+    elif command -v apk >/dev/null 2>&1; then
+      apk update && apk add zsh curl git
+    fi
+    # Install Oh-My-Zsh
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    # Set zsh as default shell
+    if command -v chsh >/dev/null 2>&1; then
+      sudo chsh -s $(which zsh)
+    fi
+    # Add bash->zsh auto-switch for interactive shells
+    if ! grep -q 'exec zsh' ~/.bashrc 2>/dev/null; then
+      echo '# If bash is launched interactively, switch to zsh' >> ~/.bashrc
+      echo 'if [ -t 1 ] && [ -n "$BASH_VERSION" ] && [ -x "$(command -v zsh)" ]; then' >> ~/.bashrc
+      echo '  exec zsh' >> ~/.bashrc
+      echo 'fi' >> ~/.bashrc
+    fi
+    progress 2
     echo ""
     sleep 1
   fi
@@ -335,6 +361,39 @@ echo "${CYAN}-----------------------------------------${RESET}"
 # --- CHECK EXISTING GIT CONFIG ---
 EXISTING_USER=$(git config --global user.name 2>/dev/null)
 EXISTING_EMAIL=$(git config --global user.email 2>/dev/null)
+prompt_github_credentials() {
+  while true; do
+    echo ""
+    printf "${BOLD}GitHub Username:${RESET} "
+    read -r GH_USER < /dev/tty
+    if [ -z "$GH_USER" ]; then echo "${RED}Error: Username cannot be empty${RESET}"; continue; fi
+    printf "${BOLD}GitHub Email:   ${RESET} "
+    read -r GH_EMAIL < /dev/tty
+    if [ -z "$GH_EMAIL" ]; then echo "${RED}Error: Email cannot be empty${RESET}"; continue; fi
+    printf "${BOLD}GitHub Token:   ${RESET} "
+    read -s GH_TOKEN < /dev/tty
+    echo ""
+    if [ -z "$GH_TOKEN" ]; then echo "${RED}Error: Token cannot be empty${RESET}"; continue; fi
+    break
+  done
+
+  # --- APPLYING GIT CONFIG ---
+  git config --global user.name "$GH_USER" || { echo "${RED}Error: Failed to set git username${RESET}"; exit 1; }
+  git config --global user.email "$GH_EMAIL" || { echo "${RED}Error: Failed to set git email${RESET}"; exit 1; }
+  git config --global credential.helper store
+
+  GH_USER_ENC=$(printf '%s' "$GH_USER" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
+  GH_TOKEN_ENC=$(printf '%s' "$GH_TOKEN" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
+  printf "https://%s:%s@github.com\n" "$GH_USER_ENC" "$GH_TOKEN_ENC" > "$HOME/.git-credentials"
+  chmod 600 "$HOME/.git-credentials"
+  # Also store in builds dir for reference
+  printf "https://%s:%s@github.com\n" "$GH_USER_ENC" "$GH_TOKEN_ENC" > "$HOME/builds/git-credentials"
+  chmod 600 "$HOME/builds/git-credentials"
+  printf "${GREEN}[ SUCCESS ] Credentials Encrypted & Stored.${RESET}\n"
+}
+
+# ...existing code...
+
 HAS_CREDENTIALS=false
 if [ -f "$HOME/.git-credentials" ]; then
   HAS_CREDENTIALS=true
@@ -360,30 +419,7 @@ else
 fi
 
 if [ "$SKIP_GIT_CONFIG" = false ]; then
-  echo ""
-  printf "${BOLD}GitHub Username:${RESET} "
-  read -r GH_USER < /dev/tty
-  if [ -z "$GH_USER" ]; then echo "${RED}Error: Username cannot be empty${RESET}"; exit 1; fi
-  printf "${BOLD}GitHub Email:   ${RESET} "
-  read -r GH_EMAIL < /dev/tty
-  if [ -z "$GH_EMAIL" ]; then echo "${RED}Error: Email cannot be empty${RESET}"; exit 1; fi
-  printf "${BOLD}GitHub Token:   ${RESET} "
-  read -s GH_TOKEN < /dev/tty
-  echo ""
-
-  # --- APPLYING GIT CONFIG ---
-  git config --global user.name "$GH_USER" || { echo "${RED}Error: Failed to set git username${RESET}"; exit 1; }
-  git config --global user.email "$GH_EMAIL" || { echo "${RED}Error: Failed to set git email${RESET}"; exit 1; }
-  git config --global credential.helper store
-
-  if [ -n "$GH_USER" ] && [ -n "$GH_TOKEN" ]; then
-    GH_USER_ENC=$(printf '%s' "$GH_USER" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
-    GH_TOKEN_ENC=$(printf '%s' "$GH_TOKEN" | sed 's/@/%40/g; s/:/%3A/g; s/ /%20/g; s/\//%2F/g; s/+/%2B/g; s/=/%3D/g')
-    printf "https://%s:%s@github.com\n" "$GH_USER_ENC" "$GH_TOKEN_ENC" > "$HOME/.git-credentials"
-    chmod 600 "$HOME/.git-credentials"
-    printf "${GREEN}[ SUCCESS ] Credentials Encrypted & Stored.${RESET}\n"
-  else
-    printf "${YELLOW}[ WARNING ] Incomplete credentials. Skipping Auth write.${RESET}\n"
+  prompt_github_credentials
   fi
   sleep 1
 fi
