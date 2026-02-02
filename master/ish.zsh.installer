@@ -420,43 +420,20 @@ fi
 
 if [ "$SKIP_GIT_CONFIG" = false ]; then
   prompt_github_credentials
-  fi
   sleep 1
 fi
 
-# Determine builds directory: prefer STATIK_BUILD_DIR, then PWD/builds, fallback to HOME/builds, else create PWD/builds
-if [ -n "${STATIK_BUILD_DIR:-}" ]; then
-  BUILD_DIR="$STATIK_BUILD_DIR"
-  echo "${CYAN}>> Using build directory from STATIK_BUILD_DIR: ${BUILD_DIR}${RESET}"
-else
-  if [ -d "$PWD/builds" ]; then
-    BUILD_DIR="$PWD/builds"
-  elif [ -d "$HOME/builds" ]; then
-    BUILD_DIR="$HOME/builds"
-  else
-    BUILD_DIR="$PWD/builds"
-    mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory ${BUILD_DIR}${RESET}"; exit 1; }
-  fi
-  echo "${CYAN}>> Using build directory: ${BUILD_DIR}${RESET}"
-  # If interactive and BUILD_DIR is not inside current PWD, confirm with user
-  if [ -t 1 ]; then
-    case "$BUILD_DIR/" in
-      "$PWD/")
-        ;; # same tree, continue
-      "$PWD/"*)
-        ;; # same tree, continue
-      *)
-        printf '%b' "${YELLOW}>> Selected build directory %s is not under current directory %s. Continue? (y/n): ${RESET}" "$BUILD_DIR" "$PWD"
-        read -r CONF_BD < /dev/tty
-        if ! printf '%s' "$CONF_BD" | grep -qi '^y' >/dev/null 2>&1; then
-          echo "${YELLOW}Aborting; set STATIK_BUILD_DIR to the desired builds directory and rerun.${RESET}"
-          exit 1
-        fi
-        ;;
-    esac
-  fi
-fi
 
+# Determine builds directory: $PWD/builds, then ../builds, else create $PWD/builds (never prompt)
+if [ -d "$PWD/builds" ]; then
+  BUILD_DIR="$PWD/builds"
+elif [ -d "$(dirname "$PWD")/builds" ]; then
+  BUILD_DIR="$(dirname "$PWD")/builds"
+else
+  BUILD_DIR="$PWD/builds"
+  mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory ${BUILD_DIR}${RESET}"; exit 1; }
+fi
+echo "${CYAN}>> Using build directory: ${BUILD_DIR}${RESET}"
 cd "$BUILD_DIR" || { echo "${RED}Error: Cannot access builds directory ${BUILD_DIR}${RESET}"; exit 1; }
 
 # Diagnostic: list build directory entries and show git origins (helps detect false positives)
