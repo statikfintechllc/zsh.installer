@@ -105,7 +105,7 @@ check_existing_setup() {
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
     # Set zsh as default shell
     if command -v chsh >/dev/null 2>&1; then
-      sudo chsh -s $(which zsh)
+      sudo chsh -s $(command -v zsh)
     fi
     # Add bash->zsh auto-switch for interactive shells
     if ! grep -q 'exec zsh' ~/.bashrc 2>/dev/null; then
@@ -273,11 +273,15 @@ setup_zsh_default() {
       sudo chsh -s "$ZSH_PATH" "$USER" 2>/dev/null || true
     fi
   elif [ "$OS" = "alpine" ]; then
-    # iSH: Use .profile
+    # iSH: Force default shell inside /etc/passwd directly
+    sed -i -e "s|/bin/ash|/bin/zsh|g" /etc/passwd 2>/dev/null || true
+    
+    # Fallbacks for .profile and .ashrc
     if ! grep -q "exec zsh" ~/.profile 2>/dev/null; then
       echo '[ -z "$ZSH_VERSION" ] && exec zsh' >> ~/.profile
-    else
-      echo "   ${GREEN}Zsh auto-start already configured.${RESET}"
+    fi
+    if ! grep -q "exec zsh" ~/.ashrc 2>/dev/null; then
+      echo '[ -z "$ZSH_VERSION" ] && exec zsh' >> ~/.ashrc
     fi
   else
     # Standard Linux/macOS: Change default shell
@@ -392,8 +396,6 @@ prompt_github_credentials() {
   printf "${GREEN}[ SUCCESS ] Credentials Encrypted & Stored.${RESET}\n"
 }
 
-# ...existing code...
-
 HAS_CREDENTIALS=false
 if [ -f "$HOME/.git-credentials" ]; then
   HAS_CREDENTIALS=true
@@ -423,19 +425,14 @@ if [ "$SKIP_GIT_CONFIG" = false ]; then
   sleep 1
 fi
 
-
-
-
 # Search up to 3 levels up and 3 levels down for the first 'builds' directory
 BUILD_DIR=""
-SEARCHED_BUILDS=()
 
 # 1. Search up to 3 levels up
 SEARCH_DIR="$PWD"
 for i in 0 1 2 3; do
   if [ -d "$SEARCH_DIR/builds" ]; then
     BUILD_DIR="$SEARCH_DIR/builds"
-    SEARCHED_BUILDS+=("$BUILD_DIR")
     break
   fi
   SEARCH_DIR="$(dirname "$SEARCH_DIR")"
@@ -443,11 +440,9 @@ done
 
 # 2. If not found, search up to 3 levels down from $PWD
 if [ -z "$BUILD_DIR" ]; then
-  # Use find, but limit depth to 3
   DOWN_BUILDS=$(find "$PWD" -maxdepth 3 -type d -name builds 2>/dev/null | head -n 1)
   if [ -n "$DOWN_BUILDS" ]; then
     BUILD_DIR="$DOWN_BUILDS"
-    SEARCHED_BUILDS+=("$BUILD_DIR")
   fi
 fi
 
@@ -455,7 +450,6 @@ fi
 if [ -z "$BUILD_DIR" ]; then
   BUILD_DIR="$PWD/builds"
   mkdir -p "$BUILD_DIR" || { echo "${RED}Error: Cannot create builds directory ${BUILD_DIR}${RESET}"; exit 1; }
-  SEARCHED_BUILDS+=("$BUILD_DIR")
 fi
 
 # Show which builds dir is being used at the top of the menu
@@ -912,4 +906,3 @@ else
   rm -f "$ACTIONS_FILE"
   echo "${GREEN}All tasks complete. Repositories located at: ${BUILD_DIR}${RESET}"
 fi
-
